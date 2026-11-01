@@ -1,0 +1,67 @@
+{
+  "providers": [
+    {
+      "id": "anthropic-example",
+      "protocol": "anthropic",
+      "baseUrl": "https://api.anthropic.com",
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "auth": "x-api-key"
+    },
+    {
+      "id": "openrouter-example",
+      "protocol": "openai",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKeyEnv": "OPENROUTER_API_KEY"
+    },
+    {
+      "id": "ollama-example",
+      "protocol": "openai",
+      "baseUrl": "http://localhost:11434/v1",
+      "apiKeyEnv": "OLLAMA_API_KEY"
+    }
+  ],
+  "models": [
+    {
+      "id": "REPLACE_WITH_ANTHROPIC_GATEWAY_MODEL_ID",
+      "provider": "anthropic-example",
+      "label": "Example only: replace id and verify every limit/capability",
+      "contextWindow": 128000,
+      "maxOutputTokens": 8192,
+      "capabilities": {
+        "tools": true,
+        "vision": true,
+        "thinking": false,
+        "serverWebTools": false,
+        "promptCaching": false
+      }
+    },
+    {
+      "id": "REPLACE_WITH_OPENROUTER_GATEWAY_MODEL_ID",
+      "provider": "openrouter-example",
+      "label": "Example only: replace id and verify every limit/capability",
+      "contextWindow": 128000,
+      "maxOutputTokens": 8192,
+      "capabilities": {
+        "tools": true,
+        "vision": false,
+        "thinking": false,
+        "serverWebTools": false,
+        "promptCaching": false
+      }
+    },
+    {
+      "id": "REPLACE_WITH_INSTALLED_OLLAMA_MODEL_ID",
+      "provider": "ollama-example",
+      "label": "Example only: replace id; set OLLAMA_API_KEY to a nonempty dummy value",
+      "contextWindow": 128000,
+      "maxOutputTokens": 8192,
+      "capabilities": {
+        "tools": true,
+        "vision": false,
+        "thinking": false,
+        "serverWebTools": false,
+        "promptCaching": false
+      }
+    }
+  ]
+}

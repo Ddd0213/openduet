@@ -1,0 +1,66 @@
+{
+  "SessionList": [
+    {
+      "sessions": [
+        {
+          "id": "Qm7xT2vLp9RkW4sZc8YbN3dHf6JgA1eU",
+          "current": true,
+          "createdAt": "2026-11-02T09:14:00.000Z",
+          "lastUsedAt": "2026-11-20T18:42:10.000Z",
+          "expiresAt": "2027-01-31T09:14:00.000Z",
+          "deviceName": "iPhone 15 Pro",
+          "userAgent": "OpenDuet/1 CFNetwork/3826.500.111.2.2 Darwin/24.4.0",
+          "signInIp": "203.0.113.24",
+          "lastIp": "198.51.100.7",
+          "push": true
+        },
+        {
+          "id": "b3KfR8nW1qZ6tY0pLs5VxC9mJ2hD4gEa",
+          "current": false,
+          "createdAt": "2026-11-05T21:03:00.000Z",
+          "lastUsedAt": "2026-11-19T07:30:00.000Z",
+          "expiresAt": "2027-02-03T21:03:00.000Z",
+          "deviceName": "iPad Air",
+          "userAgent": "OpenDuet/1 CFNetwork/3826.500.111.2.2 Darwin/24.4.0",
+          "signInIp": "203.0.113.24",
+          "lastIp": "203.0.113.24",
+          "push": false
+        },
+        {
+          "id": "Zx0Y9wV8uT7sR6qP5oN4mL3kJ2iH1gF0",
+          "current": false,
+          "createdAt": "2026-10-26T14:20:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": "2027-01-24T14:20:00.000Z",
+          "deviceName": null,
+          "userAgent": null,
+          "signInIp": null,
+          "lastIp": null,
+          "push": false
+        }
+      ]
+    },
+    {
+      "sessions": [
+        {
+          "id": "Hn4Ty7Ub2Ic5Od8Pe1Qf3Rg6Sh9Ti0Uj",
+          "current": true,
+          "createdAt": "2026-11-20T08:00:00.000Z",
+          "lastUsedAt": "2026-11-20T08:00:00.000Z",
+          "expiresAt": "2027-02-18T08:00:00.000Z",
+          "deviceName": "iPhone",
+          "userAgent": null,
+          "signInIp": null,
+          "lastIp": null,
+          "push": false
+        }
+      ]
+    }
+  ],
+  "RevokeOtherSessionsResponse": [{ "revoked": 0 }, { "revoked": 2 }],
+  "ApiError": [
+    { "error": { "code": "validation_failed", "message": "id: this is the session making the request; use sign out", "field": "id" } },
+    { "error": { "code": "not_found", "message": "Not found." } },
+    { "error": { "code": "unauthorized", "message": "Sign in again." } }
+  ]
+}

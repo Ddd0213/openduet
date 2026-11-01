@@ -1,0 +1,742 @@
+{
+  "TaskNextStep": [
+    {
+      "kind": "answer",
+      "text": {
+        "key": "task.next.answer",
+        "params": {
+          "question": {
+            "type": "text",
+            "value": "Which hotel should I book?"
+          }
+        }
+      },
+      "messageId": "msg_ask"
+    },
+    {
+      "kind": "approve",
+      "text": {
+        "key": "task.next.approve",
+        "params": {
+          "summary": {
+            "type": "text",
+            "value": "Send the reply to Priya"
+          }
+        }
+      },
+      "messageId": "msg_appr"
+    },
+    {
+      "kind": "sign_in",
+      "text": {
+        "key": "task.next.sign_in",
+        "params": {
+          "site": {
+            "type": "text",
+            "value": "united.com"
+          }
+        }
+      },
+      "messageId": "msg_signin"
+    },
+    {
+      "kind": "review",
+      "text": {
+        "key": "task.next.review"
+      },
+      "messageId": null
+    },
+    {
+      "kind": "retry",
+      "text": {
+        "key": "task.next.retry"
+      },
+      "messageId": null
+    },
+    {
+      "kind": "reply",
+      "text": {
+        "key": "task.next.reply"
+      },
+      "messageId": null
+    }
+  ],
+  "TaskFailure": [
+    {
+      "reason": {
+        "key": "system.model_timeout"
+      },
+      "retryable": true,
+      "at": "2026-10-30T09:00:00.000Z"
+    },
+    {
+      "reason": {
+        "key": "system.no_model"
+      },
+      "retryable": false,
+      "at": "2026-10-30T09:01:00.000Z"
+    }
+  ],
+  "TaskList": [
+    {
+      "tasks": [
+        {
+          "id": "task_1",
+          "channelId": "ch_main",
+          "title": "Book the Lisbon trip",
+          "status": "needs_input",
+          "source": "user",
+          "latestUpdate": null,
+          "updateCount": 1,
+          "schedule": null,
+          "archived": false,
+          "pinned": false,
+          "routine": null,
+          "nextStep": {
+            "kind": "answer",
+            "text": {
+              "key": "task.next.answer",
+              "params": {
+                "question": {
+                  "type": "text",
+                  "value": "Which hotel should I book?"
+                }
+              }
+            },
+            "messageId": "msg_ask"
+          },
+          "failure": null,
+          "resolvedAt": null,
+          "createdAt": "2026-10-30T08:00:00.000Z",
+          "updatedAt": "2026-10-30T09:00:00.000Z",
+          "app": null
+        },
+        {
+          "id": "task_2",
+          "channelId": "ch_main",
+          "title": "Summarise the board deck",
+          "status": "needs_input",
+          "source": "user",
+          "latestUpdate": {
+            "text": {
+              "key": "system.model_timeout"
+            },
+            "source": "Claude",
+            "at": "2026-10-30T09:00:00.000Z"
+          },
+          "updateCount": 1,
+          "schedule": null,
+          "archived": false,
+          "pinned": false,
+          "routine": null,
+          "nextStep": {
+            "kind": "retry",
+            "text": {
+              "key": "task.next.retry"
+            },
+            "messageId": null
+          },
+          "failure": {
+            "reason": {
+              "key": "system.model_timeout"
+            },
+            "retryable": true,
+            "at": "2026-10-30T09:00:00.000Z"
+          },
+          "resolvedAt": null,
+          "createdAt": "2026-10-30T08:00:00.000Z",
+          "updatedAt": "2026-10-30T09:00:00.000Z",
+          "app": null
+        },
+        {
+          "id": "task_4",
+          "channelId": "ch_main",
+          "title": "Tidy the Q4 folder",
+          "status": "ready_for_review",
+          "source": "user",
+          "latestUpdate": null,
+          "updateCount": 1,
+          "schedule": null,
+          "archived": false,
+          "pinned": false,
+          "routine": null,
+          "nextStep": {
+            "kind": "review",
+            "text": {
+              "key": "task.next.review"
+            },
+            "messageId": null
+          },
+          "failure": null,
+          "resolvedAt": null,
+          "createdAt": "2026-10-30T08:00:00.000Z",
+          "updatedAt": "2026-10-30T09:00:00.000Z",
+          "app": null
+        },
+        {
+          "id": "task_6",
+          "channelId": "ch_main",
+          "title": "Pick a dentist",
+          "status": "needs_input",
+          "source": "user",
+          "latestUpdate": null,
+          "updateCount": 1,
+          "schedule": null,
+          "archived": false,
+          "pinned": false,
+          "routine": null,
+          "nextStep": {
+            "kind": "reply",
+            "text": {
+              "key": "task.next.reply"
+            },
+            "messageId": null
+          },
+          "failure": null,
+          "resolvedAt": null,
+          "createdAt": "2026-10-30T08:00:00.000Z",
+          "updatedAt": "2026-10-30T09:00:00.000Z",
+          "app": null
+        },
+        {
+          "id": "task_3",
+          "channelId": "ch_main",
+          "title": "Weekly sleep plan",
+          "status": "resolved",
+          "source": "user",
+          "latestUpdate": null,
+          "updateCount": 1,
+          "schedule": null,
+          "archived": false,
+          "pinned": false,
+          "routine": null,
+          "nextStep": null,
+          "failure": null,
+          "resolvedAt": "2026-10-29T21:00:00.000Z",
+          "createdAt": "2026-10-30T08:00:00.000Z",
+          "updatedAt": "2026-10-29T21:00:00.000Z",
+          "app": "Gmail"
+        },
+        {
+          "id": "task_5",
+          "channelId": "ch_main",
+          "title": "Inbox sweep",
+          "status": "scheduled",
+          "source": "user",
+          "latestUpdate": {
+            "text": {
+              "key": "task.routine_paused_failures",
+              "params": {
+                "count": {
+                  "type": "number",
+                  "value": 3
+                }
+              }
+            },
+            "source": "Claude",
+            "at": "2026-10-30T00:00:10.000Z"
+          },
+          "updateCount": 1,
+          "schedule": {
+            "cadence": "daily",
+            "hour": 8,
+            "minute": 0
+          },
+          "archived": false,
+          "pinned": false,
+          "routine": {
+            "paused": true,
+            "quiet": true,
+            "nextRunAt": null,
+            "lastRunAt": "2026-10-30T00:00:04.000Z",
+            "lastRunStatus": "failed",
+            "failStreak": 3,
+            "pausedBy": "failures"
+          },
+          "nextStep": null,
+          "failure": null,
+          "resolvedAt": null,
+          "createdAt": "2026-10-30T08:00:00.000Z",
+          "updatedAt": "2026-10-30T09:00:00.000Z",
+          "app": null
+        }
+      ],
+      "olderResolved": 12,
+      "nextCursor": null
+    },
+    {
+      "tasks": [
+        {
+          "id": "task_7",
+          "channelId": "ch_main",
+          "title": "Renew the passport",
+          "status": "resolved",
+          "source": "user",
+          "latestUpdate": null,
+          "updateCount": 1,
+          "schedule": null,
+          "archived": false,
+          "pinned": false,
+          "routine": null,
+          "nextStep": null,
+          "failure": null,
+          "resolvedAt": "2026-10-12T10:00:00.000Z",
+          "createdAt": "2026-10-30T08:00:00.000Z",
+          "updatedAt": "2026-10-12T10:00:00.000Z",
+          "app": null
+        }
+      ],
+      "olderResolved": 0,
+      "nextCursor": "2026-10-12T10:00:00.000Z|task_7"
+    },
+    {
+      "tasks": [
+        {
+          "id": "task_1",
+          "channelId": "ch_main",
+          "title": "Book the Lisbon trip",
+          "status": "needs_input",
+          "source": "user",
+          "latestUpdate": null,
+          "updateCount": 1,
+          "schedule": null,
+          "archived": false,
+          "pinned": false,
+          "routine": null,
+          "nextStep": {
+            "kind": "answer",
+            "text": {
+              "key": "task.next.answer",
+              "params": {
+                "question": {
+                  "type": "text",
+                  "value": "Which hotel should I book?"
+                }
+              }
+            },
+            "messageId": "msg_ask"
+          },
+          "failure": null,
+          "resolvedAt": null,
+          "createdAt": "2026-10-30T08:00:00.000Z",
+          "updatedAt": "2026-10-30T09:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "NeedsYou": [
+    {
+      "count": 3,
+      "items": [
+        {
+          "kind": "task",
+          "task": {
+            "id": "task_1",
+            "channelId": "ch_main",
+            "title": "Book the Lisbon trip",
+            "status": "needs_input",
+            "source": "user",
+            "latestUpdate": null,
+            "updateCount": 1,
+            "schedule": null,
+            "archived": false,
+            "pinned": false,
+            "routine": null,
+            "nextStep": {
+              "kind": "answer",
+              "text": {
+                "key": "task.next.answer",
+                "params": {
+                  "question": {
+                    "type": "text",
+                    "value": "Which hotel should I book?"
+                  }
+                }
+              },
+              "messageId": "msg_ask"
+            },
+            "failure": null,
+            "resolvedAt": null,
+            "createdAt": "2026-10-30T08:00:00.000Z",
+            "updatedAt": "2026-10-30T09:00:00.000Z",
+            "app": null
+          }
+        },
+        {
+          "kind": "task",
+          "task": {
+            "id": "task_2",
+            "channelId": "ch_main",
+            "title": "Summarise the board deck",
+            "status": "needs_input",
+            "source": "user",
+            "latestUpdate": {
+              "text": {
+                "key": "system.model_timeout"
+              },
+              "source": "Claude",
+              "at": "2026-10-30T09:00:00.000Z"
+            },
+            "updateCount": 1,
+            "schedule": null,
+            "archived": false,
+            "pinned": false,
+            "routine": null,
+            "nextStep": {
+              "kind": "retry",
+              "text": {
+                "key": "task.next.retry"
+              },
+              "messageId": null
+            },
+            "failure": {
+              "reason": {
+                "key": "system.model_timeout"
+              },
+              "retryable": true,
+              "at": "2026-10-30T09:00:00.000Z"
+            },
+            "resolvedAt": null,
+            "createdAt": "2026-10-30T08:00:00.000Z",
+            "updatedAt": "2026-10-30T09:00:00.000Z"
+          }
+        },
+        {
+          "kind": "approval",
+          "messageId": "msg_appr_chat",
+          "channelId": "ch_main",
+          "title": "Send the reply to Priya",
+          "detail": {
+            "key": "task.next.approve",
+            "params": {
+              "summary": {
+                "type": "text",
+                "value": "Send the reply to Priya"
+              }
+            }
+          },
+          "route": "duet://channels/ch_main?message=msg_appr_chat",
+          "at": "2026-10-30T08:40:00.000Z"
+        }
+      ]
+    },
+    {
+      "count": 0,
+      "items": []
+    }
+  ],
+  "SetupInfo": [
+    {
+      "items": [
+        {
+          "id": "model",
+          "status": "ready",
+          "required": true,
+          "title": {
+            "key": "setup.model.title"
+          },
+          "detail": {
+            "text": "DeepSeek V4.1 Flash answers in the chat."
+          },
+          "fix": null,
+          "checkedAt": "2026-10-30T08:00:00.000Z"
+        },
+        {
+          "id": "search",
+          "status": "needs_setup",
+          "required": false,
+          "title": {
+            "key": "setup.search.title"
+          },
+          "detail": {
+            "text": "Claude can't search the web yet."
+          },
+          "fix": {
+            "kind": "env",
+            "names": [
+              "SEARCH_PROVIDER",
+              "TAVILY_API_KEY"
+            ],
+            "hint": {
+              "text": "Set these in backend/.env, then run scripts/setup.sh again."
+            }
+          },
+          "checkedAt": null
+        },
+        {
+          "id": "apps",
+          "status": "not_checked",
+          "required": false,
+          "title": {
+            "key": "setup.apps.title"
+          },
+          "detail": {
+            "text": "Composio is set up; no apps connected yet."
+          },
+          "fix": {
+            "kind": "route",
+            "route": "duet://settings/apps"
+          },
+          "checkedAt": null
+        },
+        {
+          "id": "computer",
+          "status": "ready",
+          "required": false,
+          "title": {
+            "key": "setup.computer.title"
+          },
+          "detail": {
+            "text": "Claude's browser and workspace are running."
+          },
+          "fix": null,
+          "checkedAt": "2026-10-30T08:00:00.000Z"
+        },
+        {
+          "id": "push",
+          "status": "needs_setup",
+          "required": false,
+          "title": {
+            "key": "setup.push.title"
+          },
+          "detail": {
+            "text": "The server has no push channel set up."
+          },
+          "fix": {
+            "kind": "env",
+            "names": [
+              "NOTIFY_PROVIDER"
+            ],
+            "hint": {
+              "text": "Pick a push channel in backend/.env, then run scripts/setup.sh again."
+            }
+          },
+          "checkedAt": null
+        },
+        {
+          "id": "voice",
+          "status": "needs_setup",
+          "required": false,
+          "title": {
+            "key": "setup.voice.title"
+          },
+          "detail": {
+            "text": "No voice model yet."
+          },
+          "fix": {
+            "kind": "route",
+            "route": "duet://settings/voice"
+          },
+          "checkedAt": null
+        }
+      ]
+    }
+  ],
+  "SoulIntroResponse": {
+    "channelId": "ch_main",
+    "runId": "run_soul"
+  },
+  "MessagePage": [
+    {
+      "messages": [
+        {
+          "id": "msg_board",
+          "channelId": "ch_main",
+          "taskId": null,
+          "role": "assistant",
+          "kind": "card",
+          "text": "",
+          "status": "sent",
+          "clientId": null,
+          "reactions": [],
+          "stopped": false,
+          "payload": {
+            "icon": "checklist",
+            "tint": "grey",
+            "title": "Your tasks",
+            "subtitle": null,
+            "blocks": [
+              {
+                "type": "group",
+                "title": "Needs you",
+                "count": 2,
+                "empty": null,
+                "rows": [
+                  {
+                    "title": "Book the Lisbon trip",
+                    "detail": "Answer: Which hotel should I book?",
+                    "route": "duet://tasks/task_1"
+                  },
+                  {
+                    "title": "Summarise the board deck",
+                    "detail": "Didn't finish. Try again?",
+                    "route": "duet://tasks/task_2"
+                  }
+                ]
+              },
+              {
+                "type": "group",
+                "title": "Working",
+                "count": 0,
+                "empty": "Nothing running right now.",
+                "rows": []
+              },
+              {
+                "type": "group",
+                "title": "Suggested",
+                "count": 1,
+                "empty": null,
+                "rows": [
+                  {
+                    "title": "Draft the offsite agenda",
+                    "detail": "From your calendar",
+                    "route": "duet://suggestions/sug_1"
+                  }
+                ]
+              },
+              {
+                "type": "group",
+                "title": "Done (last 7 days)",
+                "count": 1,
+                "empty": null,
+                "rows": [
+                  {
+                    "title": "Weekly sleep plan",
+                    "detail": null,
+                    "route": "duet://tasks/task_3"
+                  }
+                ]
+              }
+            ],
+            "actions": []
+          },
+          "createdAt": "2026-10-30T09:05:00.000Z",
+          "updatedAt": "2026-10-30T09:05:00.000Z"
+        },
+        {
+          "id": "msg_soul_1",
+          "channelId": "ch_main",
+          "taskId": null,
+          "role": "assistant",
+          "kind": "soul_setup",
+          "text": "",
+          "status": "sent",
+          "clientId": null,
+          "reactions": [],
+          "stopped": false,
+          "payload": {
+            "fields": [
+              {
+                "field": "addressAs",
+                "current": "",
+                "proposed": "Sam"
+              },
+              {
+                "field": "name",
+                "current": "",
+                "proposed": "Juniper"
+              },
+              {
+                "field": "tone",
+                "current": "",
+                "proposed": "Warm and brief. No exclamation marks."
+              }
+            ],
+            "reason": "What you picked just now.",
+            "state": "superseded"
+          },
+          "createdAt": "2026-10-30T09:10:00.000Z",
+          "updatedAt": "2026-10-30T09:10:00.000Z"
+        },
+        {
+          "id": "msg_soul_2",
+          "channelId": "ch_main",
+          "taskId": null,
+          "role": "assistant",
+          "kind": "soul_setup",
+          "text": "",
+          "status": "sent",
+          "clientId": null,
+          "reactions": [],
+          "stopped": false,
+          "payload": {
+            "fields": [
+              {
+                "field": "addressAs",
+                "current": "",
+                "proposed": "Sam"
+              },
+              {
+                "field": "tone",
+                "current": "",
+                "proposed": "Plain and calm."
+              }
+            ],
+            "reason": "What you picked just now.",
+            "state": "open"
+          },
+          "createdAt": "2026-10-30T09:10:00.000Z",
+          "updatedAt": "2026-10-30T09:10:00.000Z"
+        }
+      ],
+      "hasMore": false,
+      "activeRun": null
+    },
+    {
+      "messages": [
+        {
+          "id": "msg_soul_3",
+          "channelId": "ch_main",
+          "taskId": null,
+          "role": "assistant",
+          "kind": "soul_setup",
+          "text": "",
+          "status": "sent",
+          "clientId": null,
+          "reactions": [],
+          "stopped": false,
+          "payload": {
+            "fields": [
+              {
+                "field": "addressAs",
+                "current": "",
+                "proposed": "Sam"
+              },
+              {
+                "field": "name",
+                "current": "",
+                "proposed": "Juniper"
+              },
+              {
+                "field": "tone",
+                "current": "",
+                "proposed": "Warm and brief. No exclamation marks."
+              }
+            ],
+            "reason": "What you picked just now.",
+            "state": "applied"
+          },
+          "createdAt": "2026-10-30T09:10:00.000Z",
+          "updatedAt": "2026-10-30T09:10:00.000Z"
+        }
+      ],
+      "hasMore": false
+    }
+  ],
+  "SaveForLaterRequest": {
+    "prompt": "Find a dentist near the office who takes my insurance",
+    "channelId": "ch_main"
+  },
+  "SaveForLaterResponse": {
+    "suggestion": {
+      "id": "sug_9",
+      "channelId": "ch_main",
+      "title": "Find a dentist near the office who takes my insurance",
+      "body": "Find a dentist near the office who takes my insurance",
+      "app": null,
+      "origin": "chat",
+      "fromUser": true,
+      "createdAt": "2026-10-30T09:20:00.000Z"
+    }
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "TaskResult": [
+    {
+      "taskId": "task_11",
+      "title": "Singles' Day watch · trial run",
+      "status": "resolved",
+      "sourceCount": 2
+    },
+    {
+      "taskId": "task_12",
+      "title": "Reply to Dana about the venue",
+      "status": "ready_for_review",
+      "sourceCount": 0
+    }
+  ],
+  "MessagePage": {
+    "messages": [
+      {
+        "id": "msg_result",
+        "channelId": "ch_main",
+        "taskId": null,
+        "status": "sent",
+        "clientId": null,
+        "reactions": [],
+        "stopped": false,
+        "role": "assistant",
+        "kind": "text",
+        "text": "**Stage**: the first wave is over; the second starts Oct 30 at 8 pm.\n\n- JD: the national subsidy stacks with store coupons.\n- Tmall: official discounts, no bundling needed.\n\n**Do one thing today**: add 1–2 items to the cart and screenshot the price.",
+        "payload": {
+          "skill": null,
+          "attachments": [],
+          "replyTo": null,
+          "taskResult": {
+            "taskId": "task_11",
+            "title": "Singles' Day watch · trial run",
+            "status": "resolved",
+            "sourceCount": 2
+          },
+          "forwarded": null
+        },
+        "callId": null,
+        "createdAt": "2026-11-03T08:41:00.000Z",
+        "updatedAt": "2026-11-03T08:41:00.000Z"
+      },
+      {
+        "id": "msg_task_failed",
+        "channelId": "ch_main",
+        "taskId": null,
+        "status": "sent",
+        "clientId": null,
+        "reactions": [],
+        "stopped": false,
+        "role": "assistant",
+        "kind": "text",
+        "text": "[Singles' Day watch](duet://tasks/task_13) hit a problem: the model couldn't be reached.",
+        "payload": {
+          "skill": null,
+          "attachments": [],
+          "replyTo": null,
+          "taskResult": null,
+          "forwarded": null
+        },
+        "callId": null,
+        "createdAt": "2026-11-03T08:41:00.000Z",
+        "updatedAt": "2026-11-03T08:41:00.000Z"
+      },
+      {
+        "id": "msg_forwarded",
+        "channelId": "ch_main",
+        "taskId": "task_14",
+        "status": "sent",
+        "clientId": null,
+        "reactions": [],
+        "stopped": false,
+        "role": "user",
+        "kind": "text",
+        "text": "Also check Pinduoduo.",
+        "payload": {
+          "skill": null,
+          "attachments": [],
+          "replyTo": null,
+          "taskResult": null,
+          "forwarded": "chat"
+        },
+        "callId": null,
+        "createdAt": "2026-11-03T08:41:00.000Z",
+        "updatedAt": "2026-11-03T08:41:00.000Z"
+      },
+      {
+        "id": "msg_old",
+        "channelId": "ch_main",
+        "taskId": null,
+        "status": "sent",
+        "clientId": null,
+        "reactions": [],
+        "stopped": false,
+        "role": "assistant",
+        "kind": "text",
+        "text": "An older text payload without the M18 fields.",
+        "payload": {
+          "skill": null,
+          "attachments": [],
+          "replyTo": null
+        },
+        "callId": null,
+        "createdAt": "2026-11-03T08:41:00.000Z",
+        "updatedAt": "2026-11-03T08:41:00.000Z"
+      }
+    ],
+    "hasMore": false
+  }
+}

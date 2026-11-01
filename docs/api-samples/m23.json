@@ -1,0 +1,224 @@
+{
+  "SourceRef": [
+    {
+      "app": "Gmail",
+      "kind": "email",
+      "title": "Re: Q4 budget",
+      "at": "2026-11-01T16:20:00.000Z"
+    },
+    {
+      "app": "Google Calendar",
+      "kind": "event",
+      "title": "Design sync",
+      "at": "2026-11-02T06:00:00.000Z"
+    },
+    {
+      "app": null,
+      "kind": "chat",
+      "title": "",
+      "at": null
+    }
+  ],
+  "BriefInfo": [
+    {
+      "unchecked": [
+        "Gmail",
+        "Google Calendar"
+      ]
+    },
+    {
+      "unchecked": []
+    }
+  ],
+  "MessagePage": [
+    {
+      "messages": [
+        {
+          "id": "msg_brief",
+          "channelId": "ch_main",
+          "taskId": null,
+          "role": "assistant",
+          "kind": "text",
+          "text": "Morning, Sam! For today: the design sync at 2. Priya's budget reply. The visa form.\n\nI couldn't check Gmail this morning.",
+          "status": "sent",
+          "clientId": null,
+          "reactions": [],
+          "stopped": false,
+          "payload": {
+            "skill": null,
+            "attachments": [],
+            "replyTo": null,
+            "taskResult": null,
+            "forwarded": null,
+            "brief": {
+              "unchecked": [
+                "Gmail"
+              ]
+            }
+          },
+          "createdAt": "2026-11-02T01:00:00.000Z",
+          "updatedAt": "2026-11-02T01:00:00.000Z"
+        },
+        {
+          "id": "msg_brief2",
+          "channelId": "ch_main",
+          "taskId": null,
+          "role": "assistant",
+          "kind": "text",
+          "text": "Morning, Sam! For today: ...",
+          "status": "sent",
+          "clientId": null,
+          "reactions": [],
+          "stopped": false,
+          "payload": {
+            "skill": null,
+            "attachments": [],
+            "brief": {
+              "unchecked": []
+            }
+          },
+          "createdAt": "2026-11-03T01:00:00.000Z",
+          "updatedAt": "2026-11-03T01:00:00.000Z"
+        },
+        {
+          "id": "msg_offer",
+          "channelId": "ch_main",
+          "taskId": null,
+          "role": "assistant",
+          "kind": "proactive_suggestion",
+          "text": "A task I could help with:",
+          "status": "sent",
+          "clientId": null,
+          "reactions": [],
+          "stopped": false,
+          "payload": {
+            "title": "Prep for the 2 PM",
+            "body": "Pull notes and open questions for the design sync.",
+            "prompt": "Prep me for the 2 PM design sync",
+            "state": "open",
+            "taskId": null,
+            "suggestionId": "sug_23"
+          },
+          "createdAt": "2026-11-02T01:00:00.000Z",
+          "updatedAt": "2026-11-02T01:00:00.000Z"
+        },
+        {
+          "id": "msg_offer2",
+          "channelId": "ch_main",
+          "taskId": null,
+          "role": "assistant",
+          "kind": "proactive_suggestion",
+          "text": "A task I could help with:",
+          "status": "sent",
+          "clientId": null,
+          "reactions": [],
+          "stopped": false,
+          "payload": {
+            "title": "Reply to Priya",
+            "body": "She asked about the Q4 budget.",
+            "prompt": "Draft a reply to Priya about the Q4 budget",
+            "state": "started",
+            "taskId": "task_9",
+            "suggestionId": "sug_24"
+          },
+          "createdAt": "2026-11-02T01:00:00.000Z",
+          "updatedAt": "2026-11-02T01:00:00.000Z"
+        },
+        {
+          "id": "msg_tiles",
+          "channelId": "ch_main",
+          "taskId": null,
+          "role": "assistant",
+          "kind": "task_suggestions",
+          "text": "A few places I can start",
+          "status": "sent",
+          "clientId": null,
+          "reactions": [],
+          "stopped": false,
+          "payload": {
+            "items": [
+              {
+                "id": "s1",
+                "title": "Draft the design sync agenda",
+                "prompt": "Draft an agenda for the 2 PM design sync",
+                "app": "Google Calendar",
+                "icon": "calendar",
+                "taskId": null,
+                "suggestionId": "sug_25"
+              },
+              {
+                "id": "s2",
+                "title": "Reply to Priya",
+                "prompt": "Draft a reply to Priya",
+                "app": "Gmail",
+                "icon": null,
+                "taskId": "task_9",
+                "suggestionId": "sug_24"
+              }
+            ]
+          },
+          "createdAt": "2026-11-02T01:00:00.000Z",
+          "updatedAt": "2026-11-02T01:00:00.000Z"
+        }
+      ],
+      "hasMore": false,
+      "activeRun": null
+    }
+  ],
+  "UpNext": {
+    "scanning": false,
+    "suggestions": [
+      {
+        "id": "sug_23",
+        "channelId": null,
+        "title": "Prep for the 2 PM",
+        "body": "Pull notes and open questions for the design sync.",
+        "app": "Google Calendar",
+        "origin": "checkin",
+        "fromUser": false,
+        "sourceRef": {
+          "app": "Google Calendar",
+          "kind": "event",
+          "title": "Design sync",
+          "at": "2026-11-02T06:00:00.000Z"
+        },
+        "createdAt": "2026-11-02T01:00:00.000Z"
+      },
+      {
+        "id": "sug_26",
+        "channelId": null,
+        "title": "Send the invoice to Northfield",
+        "body": "Sam asked for it on Thursday.",
+        "app": "Gmail",
+        "origin": "checkin",
+        "createdAt": "2026-11-02T01:00:00.000Z"
+      }
+    ]
+  },
+  "MemoryFactResponse": [
+    {
+      "fact": {
+        "id": "mem_23",
+        "text": "Q4 budget review is with Priya on Friday",
+        "source": "assistant",
+        "sourceMessageId": null,
+        "sourceRef": {
+          "app": "Gmail",
+          "kind": "email",
+          "title": "Re: Q4 budget",
+          "at": "2026-11-01T16:20:00.000Z"
+        },
+        "createdAt": "2026-11-02T01:05:00.000Z"
+      }
+    },
+    {
+      "fact": {
+        "id": "mem_24",
+        "text": "Prefers short replies",
+        "source": "user",
+        "sourceMessageId": null,
+        "createdAt": "2026-11-02T01:06:00.000Z"
+      }
+    }
+  ]
+}

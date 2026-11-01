@@ -1,0 +1,85 @@
+{
+  "ArtifactList": [
+    {
+      "artifacts": [
+        {"id": "art_scrape", "channelId": "ch_main", "type": "dashboard", "title": "Link scrape", "status": "ready", "sourceCount": 1, "refreshSchedule": null, "pinnedToTabBar": false, "pinned": true, "createdAt": "2026-11-02T08:00:00.000Z", "updatedAt": "2026-11-02T09:42:10.000Z", "lastOpenedAt": "2026-11-02T09:30:00.000Z", "pageUpdatedAt": "2026-11-02T09:03:10.000Z", "dataVersion": 10},
+        {"id": "art_launch", "channelId": "ch_main", "type": "dashboard", "title": "Launch metrics", "status": "ready", "sourceCount": 2, "refreshSchedule": {"cadence": "daily", "hour": 5, "minute": 30}, "pinnedToTabBar": false, "pinned": false, "createdAt": "2026-10-25T09:00:00.000Z", "updatedAt": "2026-10-29T05:31:00.000Z", "lastOpenedAt": "2026-10-29T08:00:00.000Z", "pageUpdatedAt": "2026-10-29T05:31:00.000Z", "dataVersion": 0},
+        {"id": "art_brief", "channelId": "ch_main", "type": "docs", "title": "Q4 offsite brief", "status": "ready", "sourceCount": 2, "refreshSchedule": null, "pinnedToTabBar": false, "pinned": false, "createdAt": "2026-11-02T08:00:00.000Z", "updatedAt": "2026-11-03T09:12:00.000Z", "lastOpenedAt": "2026-11-03T09:11:40.000Z", "pageUpdatedAt": "2026-11-03T09:12:00.000Z", "dataVersion": 0},
+        {"id": "art_new", "channelId": "ch_main", "type": "dashboard", "title": "Link scrape (zh)", "status": "building", "sourceCount": 0, "refreshSchedule": null, "pinnedToTabBar": false, "pinned": false, "createdAt": "2026-11-02T10:00:00.000Z", "updatedAt": "2026-11-02T10:00:00.000Z", "lastOpenedAt": null, "pageUpdatedAt": "2026-11-02T10:00:00.000Z", "dataVersion": 0}
+      ]
+    },
+    {
+      "artifacts": [
+        {"id": "art_old", "channelId": "ch_main", "type": "dashboard", "title": "From a server before M27", "status": "ready", "sourceCount": 2, "refreshSchedule": null, "pinnedToTabBar": false, "pinned": false, "createdAt": "2026-10-25T09:00:00.000Z", "updatedAt": "2026-10-29T05:31:00.000Z", "lastOpenedAt": null}
+      ]
+    }
+  ],
+  "ArtifactDetail": [
+    {"id": "art_scrape", "channelId": "ch_main", "type": "dashboard", "title": "Link scrape", "status": "ready", "sourceCount": 1, "refreshSchedule": null, "pinnedToTabBar": false, "pinned": true, "createdAt": "2026-11-02T08:00:00.000Z", "updatedAt": "2026-11-02T09:42:10.000Z", "lastOpenedAt": "2026-11-02T09:42:30.000Z", "pageUpdatedAt": "2026-11-02T09:03:10.000Z", "dataVersion": 10, "prompt": "Link scrape\n\nA dashboard of the links the scrape task collects: how many, by category, the latest ten.", "sources": [{"name": "Hacker News front page", "app": null, "detail": "https://news.ycombinator.com"}]}
+  ],
+  "ArtifactDataResponse": [
+    {"artifactId": "art_scrape", "dataVersion": 10, "dataUpdatedAt": "2026-11-02T09:42:10.000Z", "json": "{\"updated\":\"2026-11-02T09:42:08Z\",\"total\":312,\"categories\":[{\"name\":\"AI\",\"count\":131},{\"name\":\"Programming\",\"count\":102},{\"name\":\"Hardware\",\"count\":41},{\"name\":\"Other\",\"count\":38}],\"recent\":[{\"title\":\"A tiny SQLite trick\",\"url\":\"https://example.com/sqlite\",\"category\":\"Programming\"},{\"title\":\"Open weights, again\",\"url\":\"https://example.com/weights\",\"category\":\"AI\"}],\"status\":\"Batch 6 of 8\"}"},
+    {"artifactId": "art_launch", "dataVersion": 0, "dataUpdatedAt": null, "json": null},
+    {"artifactId": "art_restored", "dataVersion": 4, "dataUpdatedAt": "2026-11-02T11:00:00.000Z", "json": null}
+  ],
+  "UpdateArtifactDataInput": [
+    {"artifactId": "art_scrape", "ops": [
+      {"op": "increment", "path": ["total"], "by": 37},
+      {"op": "increment", "path": ["categories", 0, "count"], "by": 12},
+      {"op": "append", "path": ["recent"], "value": {"title": "A tiny SQLite trick", "url": "https://example.com/sqlite", "category": "Programming"}, "max": 10},
+      {"op": "set", "path": ["status"], "value": "Batch 6 of 8"},
+      {"op": "remove", "path": ["error"]}
+    ], "data": null, "expectedVersion": 9, "metrics": [{"label": "Links", "value": 312, "unit": null}, {"label": "AI", "value": 131, "unit": null}]},
+    {"artifactId": "art_scrape", "ops": null, "data": {"updated": "2026-11-02T09:00:00Z", "total": 0, "categories": [], "recent": [], "status": "Starting"}, "expectedVersion": null, "metrics": null},
+    {"artifactId": "art_scrape", "ops": [{"op": "set", "path": ["byCategory", "人工智能"], "value": 7}, {"op": "remove", "path": ["recent", 0]}]},
+    {"artifactId": "art_scrape", "ops": [{"op": "increment", "path": ["total"]}]}
+  ],
+  "UpdateArtifactDataResult": [
+    {"status": "updated", "artifactId": "art_scrape", "title": "Link scrape", "dataVersion": 10, "bytes": 498, "note": "Saved. An open dashboard shows it within seconds; nothing was rebuilt."},
+    {"status": "unchanged", "artifactId": "art_scrape", "title": "Link scrape", "dataVersion": 10, "bytes": 498, "note": "The data was already like this; nothing was saved."},
+    {"error": "The data changed since version 9 (it is at 10 now). Call read_artifact for the current data, then make the change again.", "code": "version_conflict", "dataVersion": 10, "retryAfterMs": null},
+    {"error": "Only dashboards have live data. To change this page use edit_artifact; to bring it up to date, refresh_artifact.", "code": "not_dashboard", "dataVersion": null, "retryAfterMs": null},
+    {"error": "This dashboard was built without live data, so its page can't show an update. Use refresh_artifact, or edit_artifact to rebuild it on live data.", "code": "no_data", "dataVersion": 0, "retryAfterMs": null},
+    {"error": "Its first build hasn't saved a page yet. Try again once its card is in the thread.", "code": "not_ready", "dataVersion": 0, "retryAfterMs": null},
+    {"error": "No artifact with that id.", "code": "not_found"},
+    {"error": "The data would be 70312 bytes; at most 65536. Keep only what the page shows (cap long lists with append's max).", "code": "too_large", "dataVersion": 10, "retryAfterMs": null},
+    {"error": "ops[1]: recent[12] is past the end of the array (10 items). Nothing was saved.", "code": "invalid_op", "dataVersion": 10, "retryAfterMs": null},
+    {"error": "categories[0].count: numbers must be finite. Nothing was saved.", "code": "invalid_data", "dataVersion": 10, "retryAfterMs": null},
+    {"error": "This dashboard was updated 20 times in the last minute. Batch the changes into one call; the next one can be saved in 2400 ms.", "code": "too_frequent", "dataVersion": 10, "retryAfterMs": 2400}
+  ],
+  "ArtifactVersionList": [
+    {"versions": [
+      {"id": "av_s6", "artifactId": "art_scrape", "by": "assistant", "reason": "data", "prompt": null, "createdAt": "2026-11-02T09:38:00.000Z", "dataUpdates": 5},
+      {"id": "av_s5", "artifactId": "art_scrape", "by": "assistant", "reason": "data", "prompt": null, "createdAt": "2026-11-02T09:20:00.000Z", "dataUpdates": 3},
+      {"id": "av_s4", "artifactId": "art_scrape", "by": "user", "reason": "refresh", "prompt": null, "createdAt": "2026-11-02T09:05:00.000Z", "dataUpdates": 0},
+      {"id": "av_s3", "artifactId": "art_scrape", "by": "user", "reason": "edit", "prompt": "Put the categories in a bar chart", "createdAt": "2026-11-02T09:03:10.000Z", "dataUpdates": 0},
+      {"id": "av_s1", "artifactId": "art_scrape", "by": "assistant", "reason": "create", "prompt": "Link scrape\n\nA dashboard of the links the scrape task collects: how many, by category, the latest ten.", "createdAt": "2026-11-02T08:01:30.000Z", "dataUpdates": 0}
+    ]},
+    {"versions": [
+      {"id": "av_2", "artifactId": "art_brief", "by": "assistant", "reason": "refresh", "prompt": null, "createdAt": "2026-11-03T06:00:00.000Z"},
+      {"id": "av_1", "artifactId": "art_brief", "by": "user", "reason": "create", "prompt": "A one-page brief for the Q4 offsite", "createdAt": "2026-11-02T08:01:30.000Z"}
+    ]}
+  ],
+  "DuetEvent": [
+    {"id": 3101, "type": "artifact", "channelId": "ch_main", "createdAt": "2026-11-02T09:42:10.000Z", "payload": {"artifact": {"id": "art_scrape", "channelId": "ch_main", "type": "dashboard", "title": "Link scrape", "status": "ready", "sourceCount": 1, "refreshSchedule": null, "pinnedToTabBar": false, "pinned": true, "createdAt": "2026-11-02T08:00:00.000Z", "updatedAt": "2026-11-02T09:42:10.000Z", "lastOpenedAt": "2026-11-02T09:30:00.000Z", "pageUpdatedAt": "2026-11-02T09:03:10.000Z", "dataVersion": 10}, "buildStatus": null, "editStatus": null, "refreshStatus": null}},
+    {"id": 3050, "type": "artifact", "channelId": "ch_main", "createdAt": "2026-11-02T09:04:30.000Z", "payload": {"artifact": {"id": "art_scrape", "channelId": "ch_main", "type": "dashboard", "title": "Link scrape", "status": "ready", "sourceCount": 1, "refreshSchedule": null, "pinnedToTabBar": false, "pinned": true, "createdAt": "2026-11-02T08:00:00.000Z", "updatedAt": "2026-11-02T09:03:10.000Z", "lastOpenedAt": "2026-11-02T09:03:30.000Z", "pageUpdatedAt": "2026-11-02T09:03:10.000Z", "dataVersion": 1}, "buildStatus": {"text": "Reading the front page"}, "editStatus": null, "refreshStatus": {"state": "working", "reason": null}}},
+    {"id": 3055, "type": "artifact", "channelId": "ch_main", "createdAt": "2026-11-02T09:05:00.000Z", "payload": {"artifact": {"id": "art_scrape", "channelId": "ch_main", "type": "dashboard", "title": "Link scrape", "status": "ready", "sourceCount": 1, "refreshSchedule": null, "pinnedToTabBar": false, "pinned": true, "createdAt": "2026-11-02T08:00:00.000Z", "updatedAt": "2026-11-02T09:05:00.000Z", "lastOpenedAt": "2026-11-02T09:03:30.000Z", "pageUpdatedAt": "2026-11-02T09:03:10.000Z", "dataVersion": 2}, "buildStatus": null, "editStatus": null, "refreshStatus": null}},
+    {"id": 3140, "type": "artifact", "channelId": "ch_main", "createdAt": "2026-11-02T10:00:00.000Z", "payload": {"artifact": {"id": "art_scrape", "channelId": "ch_main", "type": "dashboard", "title": "Link scrape", "status": "ready", "sourceCount": 1, "refreshSchedule": null, "pinnedToTabBar": false, "pinned": true, "createdAt": "2026-11-02T08:00:00.000Z", "updatedAt": "2026-11-02T10:00:00.000Z", "lastOpenedAt": "2026-11-02T09:42:30.000Z", "pageUpdatedAt": "2026-11-02T09:03:10.000Z", "dataVersion": 11}, "buildStatus": null, "editStatus": null, "refreshStatus": null}}
+  ],
+  "MessagePage": {
+    "messages": [
+      {"id": "msg_scrape_card", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "artifact", "text": "", "status": "sent", "clientId": null, "reactions": [], "payload": {"artifact": {"id": "art_scrape", "channelId": "ch_main", "type": "dashboard", "title": "Link scrape", "status": "ready", "sourceCount": 1, "refreshSchedule": null, "pinnedToTabBar": false, "pinned": true, "createdAt": "2026-11-02T08:00:00.000Z", "updatedAt": "2026-11-02T09:42:10.000Z", "lastOpenedAt": "2026-11-02T09:30:00.000Z", "pageUpdatedAt": "2026-11-02T09:03:10.000Z", "dataVersion": 10}, "metrics": [{"label": "Links", "value": 312, "unit": null}, {"label": "AI", "value": 131, "unit": null}]}, "createdAt": "2026-11-02T08:01:30.000Z", "updatedAt": "2026-11-02T09:42:10.000Z"}
+    ],
+    "hasMore": false
+  },
+  "RunDetail": {
+    "id": "run_scrape_3", "kind": "task", "channelId": "ch_main", "taskId": "task_scrape", "title": {"text": "Scrape the front page"}, "status": "completed", "stepCount": 3,
+    "latest": {"title": {"key": "run.step.artifact_data"}, "detail": "total, categories.0.count, recent, status, error"}, "error": null,
+    "createdAt": "2026-11-02T09:41:50.000Z", "startedAt": "2026-11-02T09:41:51.000Z", "finishedAt": "2026-11-02T09:42:12.000Z",
+    "steps": [
+      {"id": "step_s1", "index": 0, "kind": "tool", "tool": "web_fetch", "app": null, "title": {"key": "run.step.web_fetch"}, "detail": "https://news.ycombinator.com/?p=6", "status": "ok", "input": "{\"url\":\"https://news.ycombinator.com/?p=6\"}", "output": "{\"url\":\"https://news.ycombinator.com/?p=6\",\"title\":\"Hacker News\",\"text\":\"…\"}", "approvalId": null, "startedAt": "2026-11-02T09:41:52.000Z", "finishedAt": "2026-11-02T09:41:55.000Z"},
+      {"id": "step_s2", "index": 1, "kind": "tool", "tool": "update_artifact_data", "app": null, "title": {"key": "run.step.artifact_data"}, "detail": "total", "status": "error", "input": "{\"artifactId\":\"art_scrape\",\"ops\":[{\"op\":\"increment\",\"path\":[\"total\"],\"by\":37}],\"expectedVersion\":8}", "output": "{\"error\":\"The data changed since version 8 (it is at 9 now). Call read_artifact for the current data, then make the change again.\",\"code\":\"version_conflict\",\"dataVersion\":9,\"retryAfterMs\":null}", "approvalId": null, "startedAt": "2026-11-02T09:42:00.000Z", "finishedAt": "2026-11-02T09:42:00.000Z"},
+      {"id": "step_s3", "index": 2, "kind": "tool", "tool": "update_artifact_data", "app": null, "title": {"key": "run.step.artifact_data"}, "detail": "total, categories.0.count, recent, status, error", "status": "ok", "input": "{\"artifactId\":\"art_scrape\",\"ops\":[{\"op\":\"increment\",\"path\":[\"total\"],\"by\":37},{\"op\":\"increment\",\"path\":[\"categories\",0,\"count\"],\"by\":12},{\"op\":\"append\",\"path\":[\"recent\"],\"value\":{\"title\":\"A tiny SQLite trick\"},\"max\":10},{\"op\":\"set\",\"path\":[\"status\"],\"value\":\"Batch 6 of 8\"},{\"op\":\"remove\",\"path\":[\"error\"]}],\"expectedVersion\":9}", "output": "{\"status\":\"updated\",\"artifactId\":\"art_scrape\",\"title\":\"Link scrape\",\"dataVersion\":10,\"bytes\":498,\"note\":\"Saved. An open dashboard shows it within seconds; nothing was rebuilt.\"}", "approvalId": null, "startedAt": "2026-11-02T09:42:09.000Z", "finishedAt": "2026-11-02T09:42:10.000Z"}
+    ]
+  }
+}

@@ -1,0 +1,138 @@
+{
+  "Soul": [
+    { "name": "", "addressAs": "", "identity": "", "persona": "", "tone": "", "updatedAt": null },
+    { "name": "Claude", "addressAs": "Sam", "identity": "Sam's chief of staff for the bike shop and the family calendar.", "persona": "Calm, organised, notices what's missing before Sam does.", "tone": "Warm and brief. No exclamation marks.", "updatedAt": "2026-10-28T08:00:00.000Z" }
+  ],
+  "UpdateSoulRequest": [{ "addressAs": "Sam" }, { "tone": "Warm and brief.", "persona": "Calm and organised." }],
+  "ChannelMemoryState": {
+    "channelId": "ch_shop", "useSharedMemory": true,
+    "document": "The shop opens at 9. Suppliers: Velo Parts (net 30), Chainline.",
+    "facts": [
+      { "id": "mem_1", "text": "Prefers invoices as PDF", "source": "assistant", "sourceMessageId": "msg_assistant", "createdAt": "2026-10-27T09:00:00.000Z" },
+      { "id": "mem_2", "text": "Closed on Mondays", "source": "user", "sourceMessageId": null, "createdAt": "2026-10-27T09:05:00.000Z" },
+      { "id": "mem_3", "text": "Peak season is April to June", "source": "dreaming", "sourceMessageId": "msg_user_img", "createdAt": "2026-10-27T23:00:00.000Z" }
+    ],
+    "updatedAt": "2026-10-27T23:00:00.000Z"
+  },
+  "MemoryState": {
+    "document": "Sam, runs a bike shop in Leeds.",
+    "facts": [{ "id": "mem_10", "text": "Lives in Leeds", "source": "user", "sourceMessageId": null, "createdAt": "2026-10-26T10:00:00.000Z" }],
+    "updatedAt": "2026-10-26T10:00:00.000Z"
+  },
+  "CreateMemoryFactRequest": [{ "channelId": "ch_shop", "text": "Closed on Mondays" }, { "channelId": null, "text": "Lives in Leeds" }],
+  "UpdateMemoryFactRequest": { "text": "Closed on Mondays and Tuesdays" },
+  "MemoryFactResponse": { "fact": { "id": "mem_2", "text": "Closed on Mondays", "source": "user", "sourceMessageId": null, "createdAt": "2026-10-27T09:05:00.000Z" } },
+  "MemoryOverview": { "channels": [
+    { "channelId": "ch_shop", "name": "Bike shop", "purpose": "Orders, suppliers and the weekly numbers", "useSharedMemory": true, "factCount": 3, "lastMessageAt": "2026-10-27T18:00:00.000Z", "recent": "Velo Parts confirmed the order for Thursday." },
+    { "channelId": "ch_new", "name": "Garden", "purpose": "", "useSharedMemory": false, "factCount": 0, "lastMessageAt": null, "recent": null }
+  ] },
+  "ChannelAccess": { "channelId": "ch_shop", "items": [
+    { "kind": "skill", "id": "skill_1", "name": "weekly-numbers", "description": "The Monday numbers in one table.", "scope": "all", "enabled": true },
+    { "kind": "skill", "id": "skill_2", "name": "supplier-email", "description": "How Sam writes to suppliers.", "scope": "channels", "enabled": false },
+    { "kind": "connector", "id": "cc_1", "name": "Shop inventory", "description": "The stock MCP server.", "scope": "channels", "enabled": true },
+    { "kind": "app", "id": "gmail", "name": "Gmail", "description": "Read and send email.", "scope": "all", "enabled": true }
+  ] },
+  "UpdateChannelAccessRequest": { "changes": [{ "kind": "skill", "id": "skill_2", "enabled": true }, { "kind": "app", "id": "gmail", "enabled": false }] },
+  "UpdateAccessScopeRequest": { "ref": { "kind": "skill", "id": "skill_2" }, "scope": "all" },
+  "Skill": {
+    "id": "skill_2", "name": "pdf-tools", "description": "Fill and merge PDF forms.", "instructions": "# PDF tools\n\nUse scripts/fill.py to fill a form.",
+    "createdAt": "2026-10-27T10:00:00.000Z", "source": "github", "sourceUrl": "https://github.com/anthropics/skills/tree/main/pdf",
+    "files": [{ "path": "scripts/fill.py", "size": 2048, "text": true }, { "path": "assets/logo.png", "size": 10240, "text": false }],
+    "scope": "channels", "channelIds": ["ch_shop"]
+  },
+  "SkillList": { "skills": [
+    { "id": "skill_1", "name": "weekly-numbers", "description": "The Monday numbers in one table.", "instructions": "Sales, orders, returns; one table; compare with last week.", "createdAt": "2026-10-20T10:00:00.000Z", "source": "manual", "sourceUrl": null, "files": [], "scope": "all", "channelIds": [] }
+  ] },
+  "CreateSkillRequest": [
+    { "name": "supplier-email", "description": "How Sam writes to suppliers.", "instructions": "Short, polite, always the PO number in the subject." },
+    { "name": "stock-check", "description": "Check stock levels.", "instructions": "Run scripts/check.py.", "files": [{ "path": "scripts/check.py", "text": "print('ok')\n" }], "channelId": "ch_shop" }
+  ],
+  "UpdateSkillRequest": [{ "description": "Fill, merge and split PDFs." }, { "files": [{ "path": "references/notes.md", "text": "Merging keeps bookmarks." }, { "path": "assets/old.txt", "text": null }] }],
+  "SkillFileContent": { "path": "scripts/fill.py", "text": "import sys\nprint(sys.argv)\n" },
+  "SkillImportPreview": {
+    "importId": "imp_1", "source": "github", "sourceUrl": "https://github.com/anthropics/skills",
+    "skills": [
+      { "name": "pdf-tools", "description": "Fill and merge PDF forms.", "excerpt": "# PDF tools\n\nUse scripts/fill.py to fill a form.", "files": [{ "path": "scripts/fill.py", "size": 2048, "text": true }], "hasScripts": true, "exists": false },
+      { "name": "brand-voice", "description": "Write in the brand's voice.", "excerpt": "Short sentences.", "files": [], "hasScripts": false, "exists": true }
+    ],
+    "warnings": ["docs/: no SKILL.md"]
+  },
+  "SkillImportRequest": [{ "importId": "imp_1", "names": ["pdf-tools"], "channelId": null }, { "importId": "imp_1", "names": ["pdf-tools", "brand-voice"], "channelId": "ch_shop" }],
+  "CustomConnectorList": { "connectors": [
+    {
+      "id": "cc_1", "kind": "mcp", "name": "Shop inventory", "description": "The stock MCP server.", "url": "https://mcp.example.com/mcp",
+      "domain": null, "headerName": null, "valuePrefix": null, "secret": null,
+      "headers": [{ "name": "Authorization", "secret": true, "value": null, "secretInfo": { "set": true, "last4": "9f3a" } }, { "name": "X-Shop", "secret": false, "value": "leeds", "secretInfo": null }],
+      "status": "active", "error": null,
+      "tools": [{ "name": "list_stock", "description": "List stock levels.", "access": "read", "mode": "always" }, { "name": "order_parts", "description": "Place an order.", "access": "write", "mode": "ask" }],
+      "scope": "channels", "channelIds": ["ch_shop"], "createdAt": "2026-10-27T11:00:00.000Z"
+    },
+    {
+      "id": "cc_2", "kind": "api_key", "name": "Weather", "description": "OpenWeather API.", "url": null,
+      "domain": "api.openweathermap.org", "headerName": "X-Api-Key", "valuePrefix": "", "secret": { "set": true, "last4": "a1b2" },
+      "headers": [], "status": "failed", "error": "The server answered 401 Unauthorized.", "tools": [],
+      "scope": "all", "channelIds": [], "createdAt": "2026-10-27T12:00:00.000Z"
+    }
+  ] },
+  "CreateCustomConnectorRequest": [
+    { "kind": "mcp", "name": "Shop inventory", "description": "", "url": "https://mcp.example.com/mcp", "headers": [{ "name": "Authorization", "value": "Bearer abc123", "secret": true }] },
+    { "kind": "api_key", "name": "Weather", "description": "OpenWeather API.", "domain": "api.openweathermap.org", "headerName": "X-Api-Key", "valuePrefix": "", "key": "k-123" }
+  ],
+  "UpdateCustomConnectorRequest": [{ "name": "Stock" }, { "key": "k-456" }, { "headers": [{ "name": "Authorization", "value": null, "secret": true }, { "name": "X-Shop", "value": "york", "secret": false }] }],
+  "CustomConnectorResponse": { "connector": {
+    "id": "cc_2", "kind": "api_key", "name": "Weather", "description": "OpenWeather API.", "url": null,
+    "domain": "api.openweathermap.org", "headerName": "X-Api-Key", "valuePrefix": "", "secret": { "set": true, "last4": "a1b2" },
+    "headers": [], "status": "active", "error": null, "tools": [], "scope": "all", "channelIds": [], "createdAt": "2026-10-27T12:00:00.000Z"
+  } },
+  "ConnectRequestSubmit": [{ "values": { "key": "k-123" } }, { "name": "Inventory", "url": "https://mcp.example.com/mcp", "values": { "Authorization": "Bearer abc123" } }],
+  "ChannelList": { "channels": [
+    { "id": "ch_shop", "isMain": false, "name": "Bike shop", "icon": "checkbox", "colorHex": "#E69F4E", "purpose": "Orders, suppliers and the weekly numbers", "archived": false, "unreadCount": 0, "lastReadAt": null, "lastMessageAt": null, "createdAt": "2026-10-27T08:00:00.000Z", "soulExtra": "Here you're Sam's shop manager: numbers first.", "useSharedMemory": false }
+  ] },
+  "CreateChannelRequest": [
+    { "name": "Bike shop", "icon": "checkbox", "colorHex": "#E69F4E", "purpose": "Orders and suppliers", "access": [{ "kind": "skill", "id": "skill_2" }, { "kind": "connector", "id": "cc_1" }], "greet": true },
+    { "name": "Garden", "icon": "checkbox", "colorHex": "#E69F4E", "purpose": "", "greet": false }
+  ],
+  "UpdateChannelRequest": [{ "soulExtra": "Numbers first." }, { "useSharedMemory": false }],
+  "MessageActionRequest": [{ "action": "apply" }, { "action": "undo" }],
+  "MessagePage": { "hasMore": false, "messages": [
+    {
+      "id": "msg_mem", "channelId": "ch_shop", "taskId": null, "role": "assistant", "kind": "memory_note", "text": "", "status": "sent", "clientId": null, "reactions": [], "stopped": false,
+      "payload": { "op": "remembered", "factId": "mem_1", "text": "Prefers invoices as PDF", "scope": "channel", "state": "done" },
+      "createdAt": "2026-10-27T09:00:01.000Z", "updatedAt": "2026-10-27T09:00:01.000Z"
+    },
+    {
+      "id": "msg_soul", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "soul_proposal", "text": "", "status": "sent", "clientId": null, "reactions": [], "stopped": false,
+      "payload": { "field": "tone", "current": "", "proposed": "Warm and brief. No exclamation marks.", "reason": "You asked me twice to keep it shorter.", "state": "open" },
+      "createdAt": "2026-10-27T09:10:00.000Z", "updatedAt": "2026-10-27T09:10:00.000Z"
+    },
+    {
+      "id": "msg_conn", "channelId": "ch_shop", "taskId": null, "role": "assistant", "kind": "connection_request", "text": "", "status": "sent", "clientId": null, "reactions": [], "stopped": false,
+      "payload": {
+        "type": "api_key", "name": "Weather", "purpose": "To check tomorrow's rain before the delivery run.", "url": null, "domain": "api.openweathermap.org", "toolkit": null,
+        "headerName": "X-Api-Key", "valuePrefix": "", "fields": [{ "key": "key", "label": "API key", "secret": true, "placeholder": null }], "state": "open", "connectorId": null
+      },
+      "createdAt": "2026-10-27T09:20:00.000Z", "updatedAt": "2026-10-27T09:20:00.000Z"
+    },
+    {
+      "id": "msg_conn_mcp", "channelId": "ch_shop", "taskId": null, "role": "assistant", "kind": "connection_request", "text": "", "status": "sent", "clientId": null, "reactions": [], "stopped": false,
+      "payload": {
+        "type": "mcp", "name": "Shop inventory", "purpose": "To read stock levels.", "url": "https://mcp.example.com/mcp", "domain": null, "toolkit": null,
+        "headerName": null, "valuePrefix": null, "fields": [{ "key": "Authorization", "label": "Authorization header", "secret": true, "placeholder": "Bearer …" }], "state": "connected", "connectorId": "cc_1"
+      },
+      "createdAt": "2026-10-27T09:30:00.000Z", "updatedAt": "2026-10-27T09:31:00.000Z"
+    },
+    {
+      "id": "msg_conn_app", "channelId": "ch_shop", "taskId": null, "role": "assistant", "kind": "connection_request", "text": "", "status": "sent", "clientId": null, "reactions": [], "stopped": false,
+      "payload": {
+        "type": "app", "name": "Google Calendar", "purpose": "To put the delivery runs in your calendar.", "url": null, "domain": null, "toolkit": "googlecalendar",
+        "headerName": null, "valuePrefix": null, "fields": [], "state": "open", "connectorId": null
+      },
+      "createdAt": "2026-10-27T09:40:00.000Z", "updatedAt": "2026-10-27T09:40:00.000Z"
+    }
+  ] },
+  "MessageActionResponse": { "message": {
+    "id": "msg_mem", "channelId": "ch_shop", "taskId": null, "role": "assistant", "kind": "memory_note", "text": "", "status": "sent", "clientId": null, "reactions": [], "stopped": false,
+    "payload": { "op": "remembered", "factId": "mem_1", "text": "Prefers invoices as PDF", "scope": "channel", "state": "undone" },
+    "createdAt": "2026-10-27T09:00:01.000Z", "updatedAt": "2026-10-27T09:02:00.000Z"
+  } }
+}

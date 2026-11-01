@@ -1,0 +1,19 @@
+[
+  { "id": "today_en", "lang": "en", "ask": "What's on my calendar today?" },
+  { "id": "tomorrow_zh", "lang": "zh-Hans", "ask": "我明天几点有安排？" },
+  { "id": "priya_en", "lang": "en", "ask": "Did Priya email me about the invoice?" },
+  { "id": "kenji_en", "lang": "en", "ask": "Did Kenji email me?", "expectNo": true, "invented": ["kenji (?:moved|asked|wants|wrote|sent|said)", "every weekday at 9", "q4 budget"] },
+  { "id": "budget_en", "lang": "en", "ask": "Anything new on the Q4 budget email?", "expectNo": true, "invented": ["q4 budget (?:is|was) (?:approved|due|ready|signed)", "budget (?:approved|signed off)"] },
+  { "id": "contract_zh", "lang": "zh-Hans", "ask": "陈总的合同发过来了吗？", "expectNo": true, "invented": ["合同(?:已经)?(?:发过来|到了|收到了|签好)"] },
+  { "id": "weekend_en", "lang": "en", "ask": "How was your weekend?" },
+  { "id": "tired_zh", "lang": "zh-Hans", "ask": "今天好累啊" },
+  { "id": "needs_me_en", "lang": "en", "ask": "What needs me today?" },
+  { "id": "inbox_zh", "lang": "zh-Hans", "ask": "邮箱里有什么要紧的吗？" },
+  { "id": "name_en", "lang": "en", "ask": "Give me a name for the Greenleaf tea packaging line." },
+  { "id": "book_zh", "lang": "zh-Hans", "ask": "推荐一本讲品牌设计的书" },
+  { "id": "react_got_it_zh", "lang": "zh-Hans", "ask": "ok明白了", "reactionOnly": true, "priorReply": "要切换频道，点左上角的菜单，再选想打开的频道。" },
+  { "id": "react_ok_zh", "lang": "zh-Hans", "ask": "好的", "reactionOnly": true, "priorReply": "你可以在左上角的菜单里切换频道。" },
+  { "id": "react_thanks_zh", "lang": "zh-Hans", "ask": "谢谢", "reactionOnly": true, "priorReply": "这两个方案都可以，哑光的更不容易留下指纹。" },
+  { "id": "react_got_it_en", "lang": "en", "ask": "ok got it", "reactionOnly": true, "priorReply": "To switch channels, open the menu at the top left and pick the channel you want." },
+  { "id": "react_thanks_en", "lang": "en", "ask": "thanks!", "reactionOnly": true, "priorReply": "Matte hides fingerprints better, so I'd pick that finish." }
+]

@@ -1,0 +1,12 @@
+[
+  { "id": "make_en", "kind": "make", "lang": "en", "ask": "Make me a one-page web page about our studio's packaging work for Hearth & Co.", "followUp": "It says it couldn't finish. What went wrong?" },
+  { "id": "make_zh", "kind": "make", "lang": "zh-Hans", "ask": "帮我做一个网页，介绍一下 Greenleaf 茶叶官网改版的方案。", "followUp": "显示没做完，怎么回事？" },
+  { "id": "link_article_en", "kind": "link", "lang": "en", "expect": "fetch_only", "url": "https://blog.fieldnotes.example/async-standups", "ask": "Can you summarise this for me? https://blog.fieldnotes.example/async-standups" },
+  { "id": "link_article_zh", "kind": "link", "lang": "zh-Hans", "expect": "fetch_only", "url": "https://www.designnotes.example/zh/remote-review", "ask": "帮我总结一下这篇：https://www.designnotes.example/zh/remote-review" },
+  { "id": "link_js", "kind": "link", "lang": "en", "expect": "browser_after_fetch", "url": "https://app.tallyboard.example/board/q4-launch", "ask": "What's still open on this board? https://app.tallyboard.example/board/q4-launch" },
+  { "id": "link_login", "kind": "link", "lang": "en", "expect": "browser", "url": "https://portal.ledgerline.example/statements/2026-10", "ask": "What's in my October statement? https://portal.ledgerline.example/statements/2026-10 (you need to log in to see it)" },
+  { "id": "link_login_quiet", "kind": "link", "lang": "zh-Hans", "expect": "browser_after_fetch", "url": "https://portal.ledgerline.example/statements/2026-10", "ask": "帮我看下这个月的账单：https://portal.ledgerline.example/statements/2026-10" },
+  { "id": "link_pdf", "kind": "link", "lang": "zh-Hans", "expect": "fetch_first", "url": "https://files.greenfield-pack.example/reports/annual-2026.pdf", "ask": "这个 PDF 讲了什么？https://files.greenfield-pack.example/reports/annual-2026.pdf" },
+  { "id": "computer_en", "kind": "computer", "lang": "en", "ask": "What can your computer do? If you make files on it, are they still there next week?" },
+  { "id": "computer_zh", "kind": "computer", "lang": "zh-Hans", "ask": "你的电脑能干什么？上面装的东西和文件会一直在吗？" }
+]

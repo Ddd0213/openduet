@@ -1,0 +1,4 @@
+# Bun must not auto-load backend/.env: tests build their config from test/helpers and must
+# never see the owner's real keys. Scripts that need .env pass --env-file=.env explicitly
+# (see package.json); in Docker, compose injects the variables and `start` reads them.
+env = false

@@ -1,0 +1,121 @@
+{
+  "RunList": {
+    "hasMore": true,
+    "runs": [
+      {
+        "id": "run_task_1", "kind": "task", "channelId": "ch_main", "taskId": "task_1",
+        "title": { "text": "Conference sign-up" }, "status": "running", "stepCount": 8,
+        "latest": { "title": { "key": "run.step.files_write" }, "detail": "/workspace/attendees.csv" },
+        "error": null,
+        "createdAt": "2026-10-25T08:50:04.000Z", "startedAt": "2026-10-25T08:50:05.000Z", "finishedAt": null
+      },
+      {
+        "id": "run_chat_1", "kind": "chat", "channelId": "ch_main", "taskId": null,
+        "title": { "text": "Can you sign my team up for the conference?" }, "status": "completed", "stepCount": 3,
+        "latest": { "title": { "key": "run.step.text" }, "detail": "On it. I started Conference sign-up and made the Monday brief." },
+        "error": null,
+        "createdAt": "2026-10-25T08:50:00.000Z", "startedAt": "2026-10-25T08:50:01.000Z", "finishedAt": "2026-10-25T08:50:04.000Z"
+      },
+      {
+        "id": "run_build_1", "kind": "build", "channelId": "ch_main", "taskId": null,
+        "title": { "key": "run.title.build" }, "status": "completed", "stepCount": 6,
+        "latest": { "title": { "key": "run.step.make" }, "detail": "Signup funnel" },
+        "error": null,
+        "createdAt": "2026-10-25T08:30:00.000Z", "startedAt": "2026-10-25T08:30:01.000Z", "finishedAt": "2026-10-25T08:33:40.000Z"
+      },
+      {
+        "id": "run_brief_1", "kind": "brief", "channelId": "ch_main", "taskId": null,
+        "title": { "key": "run.title.brief" }, "status": "failed", "stepCount": 1,
+        "latest": { "title": { "key": "run.step.error" }, "detail": "Couldn't reach the model (gateway returned 502). Check the model settings." },
+        "error": { "key": "system.model_error", "params": { "status": { "type": "number", "value": 502 } } },
+        "createdAt": "2026-10-25T08:00:00.000Z", "startedAt": "2026-10-25T08:00:01.000Z", "finishedAt": "2026-10-25T08:00:03.000Z"
+      },
+      {
+        "id": "run_checkin_1", "kind": "checkin", "channelId": "ch_main", "taskId": null,
+        "title": { "key": "run.title.checkin" }, "status": "queued", "stepCount": 0,
+        "latest": null, "error": null,
+        "createdAt": "2026-10-25T07:59:00.000Z", "startedAt": null, "finishedAt": null
+      },
+      {
+        "id": "run_scan_1", "kind": "scan", "channelId": "ch_main", "taskId": null,
+        "title": { "key": "run.title.scan" }, "status": "skipped", "stepCount": 0,
+        "latest": null, "error": null,
+        "createdAt": "2026-10-24T09:00:00.000Z", "startedAt": null, "finishedAt": "2026-10-24T09:00:00.000Z"
+      }
+    ]
+  },
+  "RunDetail": [
+    {
+      "id": "run_task_1", "kind": "task", "channelId": "ch_main", "taskId": "task_1",
+      "title": { "text": "Conference sign-up" }, "status": "running", "stepCount": 8,
+      "latest": { "title": { "key": "run.step.files_write" }, "detail": "/workspace/attendees.csv" },
+      "error": null,
+      "createdAt": "2026-10-25T08:50:04.000Z", "startedAt": "2026-10-25T08:50:05.000Z", "finishedAt": null,
+      "steps": [
+        {
+          "id": "step_1", "index": 0, "kind": "thinking", "tool": null, "app": null,
+          "title": { "key": "run.step.thinking" }, "detail": "The user wants three seats; I need the attendee list first.",
+          "status": "ok", "input": "The user wants three seats; I need the attendee list first. The calendar invite has the names.", "output": null,
+          "approvalId": null, "startedAt": "2026-10-25T08:50:05.000Z", "finishedAt": "2026-10-25T08:50:06.000Z"
+        },
+        {
+          "id": "step_2", "index": 1, "kind": "tool", "tool": "web_search", "app": null,
+          "title": { "key": "run.step.web_search" }, "detail": "DevSummit 2026 registration",
+          "status": "ok", "input": "{\"query\":\"DevSummit 2026 registration\"}", "output": "{\"results\":[{\"title\":\"DevSummit 2026 · Register\",\"url\":\"https://events.example.com/devsummit\"}]}",
+          "approvalId": null, "startedAt": "2026-10-25T08:50:06.000Z", "finishedAt": "2026-10-25T08:50:08.000Z"
+        },
+        {
+          "id": "step_3", "index": 2, "kind": "tool", "tool": "computer_navigate", "app": "Claude's computer",
+          "title": { "key": "run.step.navigate" }, "detail": "https://events.example.com/devsummit",
+          "status": "error", "input": "{\"url\":\"https://events.example.com/devsummit\"}", "output": "{\"error\":\"The page took too long to load.\"}",
+          "approvalId": null, "startedAt": "2026-10-25T08:50:08.000Z", "finishedAt": "2026-10-25T08:50:38.000Z"
+        },
+        {
+          "id": "step_4", "index": 3, "kind": "tool", "tool": "computer_exec", "app": "Claude's computer",
+          "title": { "key": "run.step.exec" }, "detail": "python3 export_attendees.py --all",
+          "status": "denied", "input": "python3 export_attendees.py --all", "output": null,
+          "approvalId": "apr_exec_1", "startedAt": "2026-10-25T08:50:40.000Z", "finishedAt": "2026-10-25T08:52:10.000Z"
+        },
+        {
+          "id": "step_5", "index": 4, "kind": "text", "tool": null, "app": null,
+          "title": { "key": "run.step.text" }, "detail": "I'll email the organiser to hold three seats.",
+          "status": "ok", "input": "I'll email the organiser to hold three seats.", "output": null,
+          "approvalId": null, "startedAt": "2026-10-25T08:52:11.000Z", "finishedAt": "2026-10-25T08:52:12.000Z"
+        },
+        {
+          "id": "step_6", "index": 5, "kind": "tool", "tool": "GMAIL_SEND_EMAIL", "app": "Gmail",
+          "title": { "text": "Send Email" }, "detail": "events@example.com",
+          "status": "awaiting_approval", "input": "{\"recipient_email\":\"events@example.com\",\"subject\":\"Three seats for DevSummit\",\"body\":\"Hi, could you hold three seats...\"}", "output": null,
+          "approvalId": "apr_1", "startedAt": "2026-10-25T08:52:12.000Z", "finishedAt": null
+        },
+        {
+          "id": "step_7", "index": 6, "kind": "tool", "tool": "computer_files_read", "app": "Claude's computer",
+          "title": { "key": "run.step.files_read" }, "detail": "/workspace/team.md",
+          "status": "ok", "input": "{\"path\":\"/workspace/team.md\"}", "output": "# Team\n- Alex Chen\n- Sam Rivera\n- Jordan Lee",
+          "approvalId": null, "startedAt": "2026-10-25T08:52:13.000Z", "finishedAt": "2026-10-25T08:52:13.000Z"
+        },
+        {
+          "id": "step_8", "index": 7, "kind": "tool", "tool": "computer_files_write", "app": "Claude's computer",
+          "title": { "key": "run.step.files_write" }, "detail": "/workspace/attendees.csv",
+          "status": "running", "input": "{\"path\":\"/workspace/attendees.csv\",\"bytes\":96}", "output": null,
+          "approvalId": null, "startedAt": "2026-10-25T08:52:14.000Z", "finishedAt": null
+        }
+      ]
+    },
+    {
+      "id": "run_brief_1", "kind": "brief", "channelId": "ch_main", "taskId": null,
+      "title": { "key": "run.title.brief" }, "status": "failed", "stepCount": 1,
+      "latest": { "title": { "key": "run.step.error" }, "detail": "Couldn't reach the model (gateway returned 502). Check the model settings." },
+      "error": { "key": "system.model_error", "params": { "status": { "type": "number", "value": 502 } } },
+      "createdAt": "2026-10-25T08:00:00.000Z", "startedAt": "2026-10-25T08:00:01.000Z", "finishedAt": "2026-10-25T08:00:03.000Z",
+      "steps": [
+        {
+          "id": "step_err_1", "index": 0, "kind": "error", "tool": null, "app": null,
+          "title": { "key": "run.step.error" }, "detail": "Couldn't reach the model (gateway returned 502). Check the model settings.",
+          "status": "error", "input": null, "output": null,
+          "approvalId": null, "startedAt": "2026-10-25T08:00:03.000Z", "finishedAt": "2026-10-25T08:00:03.000Z"
+        }
+      ]
+    }
+  ]
+}

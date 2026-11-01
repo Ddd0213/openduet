@@ -1,0 +1,1600 @@
+OpenDuet patch for CopilotKit/OpenBot agent-computer (MIT) at da9a3caf5784074baa779110dd7e9d1338c8871b.
+Landscape by default (COMPUTER_BROWSER_SCREEN=portrait: a 430x660 headless page at scale 2, 860x1320 cast); the Bot's tabs for the app's own tab strip and address bar (GET/POST /human/tabs, POST /human/navigate, a tabs message on /stream); the Bot keeps the tab a person picked; OpenBot 0.2.0's keyboard fix (no nativeVirtualKeyCode).
+Applied in /app by computer/Dockerfile: patch -p1 --forward --fuzz=0. Regenerated with diff -ruN.
+
+diff -ruN a/src/bot-tabs.ts b/src/bot-tabs.ts
+--- a/src/bot-tabs.ts	1970-01-01 08:00:00
++++ b/src/bot-tabs.ts	2026-10-28 00:00:00
+@@ -0,0 +1,246 @@
++/*
++ * OpenDuet patch 0006: the Bot's tabs, for the app's own tab strip and address bar.
++ *
++ * Headless, the live screen is only the page, so the phone draws the browser's bar itself and
++ * needs to know what is open: each tab's id, address and title, which one the Bot follows, and
++ * whether there is anywhere to go back or forward to. The tab id is the page's DevTools target id,
++ * which stays the same for the life of the tab. Adapted from CopilotKit/OpenBot's agent-computer
++ * 0.2.0 (src/browser-host.ts `tabIdOf`, `tabsOf`, `shownUrl`, and the hosted browser keeping one
++ * tab open; MIT).
++ *
++ * In its own file, without importing Playwright's runtime, so its tests need no browser.
++ */
++import type { CDPSession, Page } from "playwright";
++import { parseNavigateUrl } from "./request-validation";
++import { within } from "./window-geometry";
++
++export type BotTab = { id: string; url: string; title: string; active: boolean };
++
++export type BotTabs = {
++  tabs: BotTab[];
++  /** The followed tab's history, so the app greys out ← and →. */
++  canGoBack: boolean;
++  canGoForward: boolean;
++};
++
++export const NO_TABS: BotTabs = { tabs: [], canGoBack: false, canGoForward: false };
++
++/** Chromium's own page for an address that did not load. */
++export const ERROR_PAGE = "chrome-error://";
++
++/** How long one tab may take to say what it shows before the answer leaves it out. */
++const ASK_MS = 300;
++
++/** The part of a page this needs, so tests can hand in a stand-in. */
++export type TabPage = Pick<Page, "url" | "isClosed"> & {
++  context(): { newCDPSession(page: Page): Promise<Pick<CDPSession, "send">> };
++};
++
++/*
++ * One DevTools session per page, opened at the first question and kept for the life of the page:
++ * the app's strip is checked every second while somebody watches, and opening and detaching a
++ * session each time would be most of the work. The session only reads (target info, history); it
++ * enables no domain, so nothing a page can observe changes.
++ */
++const sessions = new WeakMap<object, Promise<Pick<CDPSession, "send">>>();
++const ids = new WeakMap<object, string>();
++
++async function ask<T>(page: TabPage, method: string): Promise<T | undefined> {
++  let session = sessions.get(page);
++  if (!session) {
++    session = page.context().newCDPSession(page as unknown as Page);
++    sessions.set(page, session);
++  }
++  try {
++    return (await (await session).send(method as never)) as T;
++  } catch {
++    // A session that broke (the page closed, the browser went) is opened again next time.
++    sessions.delete(page);
++    return undefined;
++  }
++}
++
++type TargetInfo = { targetInfo: { targetId: string; url: string; title: string } };
++type History = { currentIndex: number; entries: unknown[] };
++
++/** The address a tab shows: its page's, or on Chromium's error page the address that failed. */
++export function shownUrl(pageUrl: string, targetUrl: string | undefined): string {
++  return pageUrl.startsWith(ERROR_PAGE) && targetUrl ? targetUrl : pageUrl;
++}
++
++/** The open tabs in the browser's order, and the followed one's history. */
++export async function listTabs(pages: readonly TabPage[], active: TabPage): Promise<BotTabs> {
++  const open = pages.filter((page) => !page.isClosed());
++  const infos = await Promise.all(
++    open.map((page) => within(ask<TargetInfo>(page, "Target.getTargetInfo"), ASK_MS)),
++  );
++  const tabs: BotTab[] = [];
++  open.forEach((page, index) => {
++    const info = infos[index]?.targetInfo;
++    if (!info) return;
++    ids.set(page, info.targetId);
++    tabs.push({
++      id: info.targetId,
++      url: shownUrl(page.url(), info.url),
++      title: info.title,
++      active: page === active,
++    });
++  });
++  const history = open.includes(active)
++    ? await within(ask<History>(active, "Page.getNavigationHistory"), ASK_MS)
++    : undefined;
++  const at = history?.currentIndex ?? 0;
++  return {
++    tabs,
++    canGoBack: history ? at > 0 : false,
++    canGoForward: history ? at < history.entries.length - 1 : false,
++  };
++}
++
++/** The open page with this tab id, asking the pages not yet asked. */
++export async function pageWithId<T extends TabPage>(
++  pages: readonly T[],
++  id: string,
++): Promise<T | undefined> {
++  for (const page of pages) {
++    if (page.isClosed()) continue;
++    let known = ids.get(page);
++    if (!known) {
++      known = (await within(ask<TargetInfo>(page, "Target.getTargetInfo"), ASK_MS))?.targetInfo
++        .targetId;
++      if (known) ids.set(page, known);
++    }
++    if (known === id) return page;
++  }
++  return undefined;
++}
++
++/**
++ * The tab to follow when the followed one closes, as a browser does it: the one to its right, else
++ * the one to its left. Undefined when it is not the followed one or is the only tab.
++ */
++export function neighbourOf<T>(pages: readonly T[], closing: T, active: T): T | undefined {
++  if (closing !== active) return undefined;
++  const at = pages.indexOf(closing);
++  if (at < 0) return undefined;
++  return pages[at + 1] ?? pages[at - 1];
++}
++
++/** A tab state as one comparable string, so a push goes out only when something changed. */
++export function fingerprint(state: BotTabs): string {
++  return JSON.stringify(state);
++}
++
++/* ------------------------------------ what a person asks for ------------------------------------ */
++
++/**
++ * `POST /human/tabs`. Addresses arrive already resolved (the server turns what was typed into an
++ * http(s) address or a search); this only checks they are web addresses. `close` may name the page
++ * to open first when it is the last tab, so the screen always has one.
++ */
++export type TabAction =
++  | { action: "new"; url?: string }
++  | { action: "activate"; tabId: string }
++  | { action: "close"; tabId: string; replaceWith?: string };
++
++/** `POST /human/navigate`: the followed tab goes to an address, or back, forward or reloads. */
++export type NavigateAction = { url: string } | { action: "back" | "forward" | "reload" };
++
++type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
++
++const MAX_ADDRESS = 2000;
++const MAX_TAB_ID = 200;
++
++function address(value: unknown): Parsed<string> {
++  if (typeof value === "string" && value.trim().length > MAX_ADDRESS)
++    return { ok: false, error: "That address is too long." };
++  const parsed = parseNavigateUrl(value);
++  return parsed.ok ? { ok: true, value: parsed.url } : { ok: false, error: parsed.error };
++}
++
++function tabId(value: unknown): Parsed<string> {
++  return typeof value === "string" && value.trim() && value.length <= MAX_TAB_ID
++    ? { ok: true, value: value.trim() }
++    : { ok: false, error: "A tabId is required." };
++}
++
++export function parseTabAction(body: unknown): Parsed<TabAction> {
++  const input = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
++  if (input.action === "new") {
++    if (input.url === undefined) return { ok: true, value: { action: "new" } };
++    const url = address(input.url);
++    return url.ok ? { ok: true, value: { action: "new", url: url.value } } : url;
++  }
++  if (input.action === "activate" || input.action === "close") {
++    const id = tabId(input.tabId);
++    if (!id.ok) return id;
++    if (input.action === "activate")
++      return { ok: true, value: { action: "activate", tabId: id.value } };
++    if (input.replaceWith === undefined)
++      return { ok: true, value: { action: "close", tabId: id.value } };
++    const url = address(input.replaceWith);
++    return url.ok
++      ? { ok: true, value: { action: "close", tabId: id.value, replaceWith: url.value } }
++      : url;
++  }
++  return { ok: false, error: "action must be new, activate or close." };
++}
++
++export function parseNavigateAction(body: unknown): Parsed<NavigateAction> {
++  const input = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
++  if (input.url !== undefined) {
++    const url = address(input.url);
++    return url.ok ? { ok: true, value: { url: url.value } } : url;
++  }
++  if (input.action === "back" || input.action === "forward" || input.action === "reload")
++    return { ok: true, value: { action: input.action } };
++  return { ok: false, error: "Send a url, or an action: back, forward or reload." };
++}
++
++/* ------------------------------------- telling the screen ------------------------------------- */
++
++/*
++ * The live screen of each Bot registers here while it is open, so a tab action answered over HTTP
++ * reaches the socket at once instead of at the next second of the follow loop.
++ */
++const watchers = new Map<string, () => void>();
++
++/** Register the screen's check for this Bot; the returned function unregisters that one only. */
++export function watchTabs(botId: string, check: () => void): () => void {
++  watchers.set(botId, check);
++  return () => {
++    if (watchers.get(botId) === check) watchers.delete(botId);
++  };
++}
++
++/** Something about this Bot's tabs changed; its screen, if one is open, looks now. */
++export function tabsChanged(botId: string): void {
++  watchers.get(botId)?.();
++}
++
++/**
++ * One run at a time of `work`, and one more after it however often it was asked meanwhile: the
++ * follow loop's second and a tab action can ask together, and two casts must not start on one page.
++ */
++export function oneAtATime(work: () => Promise<void>): () => Promise<void> {
++  let running: Promise<void> | undefined;
++  let again = false;
++  const run = (): Promise<void> => {
++    if (running) {
++      again = true;
++      return running;
++    }
++    running = (async () => {
++      try {
++        do {
++          again = false;
++          await work().catch(() => undefined);
++        } while (again);
++      } finally {
++        running = undefined;
++      }
++    })();
++    return running;
++  };
++  return run;
++}
+diff -ruN a/src/index.ts b/src/index.ts
+--- a/src/index.ts	2026-10-28 00:00:00
++++ b/src/index.ts	2026-10-28 00:00:00
+@@ -39,8 +39,8 @@
+ import {
+   createProfiles,
+   numberFromEnv,
++  PAGE,
+   SCREEN,
+-  VIEWPORT,
+   WINDOW_MODE,
+ } from "./profiles";
+ import {
+@@ -50,7 +50,24 @@
+   parseScrollDelta,
+ } from "./request-validation";
+ import { type InputMessage, startScreencast } from "./screencast";
++import { castLimits } from "./screen";
+ import {
++  type BotTabs,
++  ERROR_PAGE,
++  fingerprint,
++  listTabs,
++  type NavigateAction,
++  NO_TABS,
++  neighbourOf,
++  oneAtATime,
++  pageWithId,
++  parseNavigateAction,
++  parseTabAction,
++  type TabAction,
++  tabsChanged,
++  watchTabs,
++} from "./bot-tabs";
++import {
+   markElementSecret,
+   maskSensitiveValues,
+   SECRET_ATTRIBUTE,
+@@ -584,6 +601,34 @@
+ /** How often the cast checks that it is still showing the page the Bot is on. */
+ const FOLLOW_INTERVAL_MS = 1_000;
+ 
++/**
++ * OpenDuet patch 0006: this Bot's tabs, without starting a browser (nothing when none runs), so
++ * the app's tab strip can ask at any time. `browserBarInFrame` says whether the frames are Chrome's
++ * whole window (window mode), whose own tab strip and address bar the app then does not draw again.
++ */
++async function tabsNow(
++  botId: string,
++): Promise<BotTabs & { browserBarInFrame: boolean }> {
++  const running = profiles.running(botId);
++  const tabs = running ? await listTabs(running.pages, running.page) : NO_TABS;
++  return { ...tabs, browserBarInFrame: WINDOW_MODE };
++}
++
++/**
++ * OpenDuet patch 0006: the tab strip's state on the live screen's socket, sent when it changed
++ * (the first time always).
++ */
++function tabsPusher(botId: string, send: (message: unknown) => void): () => Promise<void> {
++  let last: string | undefined;
++  return async () => {
++    const state = await tabsNow(botId);
++    const now = fingerprint(state);
++    if (now === last) return;
++    last = now;
++    send({ type: "tabs", ...state });
++  };
++}
++
+ /** What a live-screen socket carries: the Bot whose screen it is showing. */
+ type StreamData = { botId: string; recordingId?: string };
+ 
+@@ -646,32 +691,54 @@
+             onFrame: send,
+           });
+           if (!(await claim.install(cast))) return;
+-          const follow = setInterval(() => {
+-            void currentPage(ws.data.botId).catch(() => undefined);
+-          }, FOLLOW_INTERVAL_MS);
+-          claim.setFollow(() => clearInterval(follow));
++          // OpenDuet patch 0006: the tabs too, though Chrome's own bar is in these frames.
++          const pushTabs = tabsPusher(ws.data.botId, send);
++          const check = oneAtATime(async () => {
++            await currentPage(ws.data.botId);
++            await pushTabs();
++          });
++          void check();
++          const follow = setInterval(() => void check(), FOLLOW_INTERVAL_MS);
++          const unwatch = watchTabs(ws.data.botId, () => void check());
++          claim.setFollow(() => {
++            clearInterval(follow);
++            unwatch();
++          });
+           return;
+         }
+ 
+         /*
+          * The cast follows the Bot's current page. Re-checking also handles a page being closed
+          * underneath us without a listener per page.
++         *
++         * OpenDuet patch 0006: one check at a time (a tab action asks at once, beside the loop's
++         * second), sized for the page (`castLimits`: the caps are device pixels), and each check
++         * also sends the tab strip's state when it changed.
+          */
+         let casting: Page | undefined;
++        const pushTabs = tabsPusher(ws.data.botId, send);
+         const attach = async () => {
+           const target = await currentPage(ws.data.botId);
+-          if (target === casting) return;
+-          const cast = await startScreencast(target, send);
+-          // The claim stops a cast it refuses, so a launch that lost the screen leaks nothing.
+-          if (!(await claim.install(cast))) return;
+-          casting = target;
++          if (target !== casting) {
++            const cast = await startScreencast(target, send, castLimits(PAGE));
++            // The claim stops a cast it refuses, so a launch that lost the screen leaks nothing.
++            if (!(await claim.install(cast))) return;
++            casting = target;
++          }
++          await pushTabs();
+         };
++        const check = oneAtATime(attach);
+ 
+         await attach();
+-        const follow = setInterval(() => {
+-          void attach().catch(() => undefined);
+-        }, FOLLOW_INTERVAL_MS);
+-        if (!claim.setFollow(() => clearInterval(follow))) return;
++        const follow = setInterval(() => void check(), FOLLOW_INTERVAL_MS);
++        const unwatch = watchTabs(ws.data.botId, () => void check());
++        if (
++          !claim.setFollow(() => {
++            clearInterval(follow);
++            unwatch();
++          })
++        )
++          return;
+       } catch (error) {
+         /*
+          * Released before the socket is told, because this path is reachable in exactly the timing
+@@ -1094,6 +1161,45 @@
+         }
+       }
+ 
++      /*
++       * OpenDuet patch 0006: the app's own tab strip and address bar. Reading the tabs is allowed
++       * at any time and starts nothing (an empty list when no browser runs): the bar shows while
++       * the Bot works too. Changing them is a person driving, so only while they hold the wheel,
++       * like their clicks; not on the Bot's acting list. Each answers the tabs as they are after.
++       */
++      if (url.pathname === "/human/tabs" && request.method === "GET") {
++        return json(await tabsNow(botId));
++      }
++      if (
++        (url.pathname === "/human/tabs" || url.pathname === "/human/navigate") &&
++        request.method === "POST"
++      ) {
++        if (!session.control.humanMayDrive()) {
++          return json({ error: TAKE_CONTROL_FIRST }, 409);
++        }
++        const body = await request.json().catch(() => null);
++        const parsed =
++          url.pathname === "/human/tabs"
++            ? parseTabAction(body)
++            : parseNavigateAction(body);
++        if (!parsed.ok) return json({ error: parsed.error }, 400);
++        session.humanInputs += 1;
++        try {
++          const done =
++            url.pathname === "/human/tabs"
++              ? await humanTabAction(botId, parsed.value as TabAction)
++              : await humanNavigate(botId, parsed.value as NavigateAction);
++          if (!done)
++            return json({ error: "There is no such tab.", noSuchTab: true }, 404);
++          // A new document or another tab: every ref handed out before this is retired.
++          session.snapshotId += 1;
++          tabsChanged(botId);
++          return json(await tabsNow(botId));
++        } catch (error) {
++          return json({ error: describe(error, "That did not work.") }, 502);
++        }
++      }
++
+       if (url.pathname === "/health") {
+         const [profile] = profiles.summary([botId]);
+         return json({
+@@ -1585,8 +1691,9 @@
+     // Clamped rather than rejected. A click a pixel outside the viewport is a rounding artefact of
+     // scaling the screenshot, not a mistake worth refusing.
+     return {
+-      x: Math.min(Math.max(x, 0), VIEWPORT.width - 1),
+-      y: Math.min(Math.max(y, 0), VIEWPORT.height - 1),
++      // OpenDuet patch 0006: the page's own size, portrait or landscape.
++      x: Math.min(Math.max(x, 0), PAGE.width - 1),
++      y: Math.min(Math.max(y, 0), PAGE.height - 1),
+     };
+   };
+ 
+@@ -1626,6 +1733,105 @@
+   const deltaY = parsed.deltaY ?? 400;
+   await target.mouse.wheel(0, deltaY);
+   return { action: "human_scroll", deltaY, url: target.url() };
++}
++
++/** OpenDuet patch 0006: how long a person's navigation waits for the new page to commit. */
++const HUMAN_NAVIGATION_MS = 15_000;
++/** How long after a failed load Chromium takes to show its error page (OpenBot measured ~100 ms). */
++const ERROR_PAGE_MS = 1_000;
++
++/**
++ * OpenDuet patch 0006: a person sends a tab somewhere. Answered once the new document commits,
++ * not when it has loaded: the live screen shows the rest. A load that fails or takes longer is not
++ * an error to them, because the screen shows Chromium's own page for it or the page arriving; it
++ * is logged. Only web addresses (the request is checked with `/navigate`'s own rule), and through
++ * the egress filter as every request of this browser.
++ */
++async function humanGoto(target: Page, address: string): Promise<void> {
++  try {
++    await target.goto(address, { waitUntil: "commit", timeout: HUMAN_NAVIGATION_MS });
++  } catch (error) {
++    const message = error instanceof Error ? error.message : String(error);
++    // Chromium commits its error page a moment after the load failed; the tab strip asks next.
++    if (/net::ERR_/.test(message) && !/net::ERR_ABORTED/.test(message)) {
++      const deadline = Date.now() + ERROR_PAGE_MS;
++      while (
++        Date.now() < deadline &&
++        !target.isClosed() &&
++        !target.url().startsWith(ERROR_PAGE)
++      )
++        await new Promise((resolve) => setTimeout(resolve, 25));
++    }
++    console.info(
++      JSON.stringify({
++        type: "computer-human-navigation-incomplete",
++        reason: /net::ERR_[A-Z_]+/.exec(message)?.[0] ?? "navigation_incomplete",
++      }),
++    );
++  }
++}
++
++/** OpenDuet patch 0006: a tab put in front, for the Bot and, in window mode, in Chrome's window. */
++async function putInFront(botId: string, page: Page): Promise<boolean> {
++  if (!profiles.pick(botId, page)) return false;
++  await within(page.bringToFront(), 1_000);
++  return true;
++}
++
++/**
++ * OpenDuet patch 0006: the tab strip. False when the tab named is not open (any more). A tab that
++ * closes while the Bot follows it hands over to its neighbour, as a browser does; the last tab
++ * opens `replaceWith` first (the server sends its start page), so the screen always has a page.
++ */
++async function humanTabAction(botId: string, action: TabAction): Promise<boolean> {
++  await currentPage(botId, "navigate");
++  if (action.action === "new") {
++    const opened = await profiles.openTab(botId);
++    await within(opened.bringToFront(), 1_000);
++    if (action.url) await humanGoto(opened, action.url);
++    return true;
++  }
++  const running = profiles.running(botId);
++  if (!running) return false;
++  const page = await pageWithId(running.pages, action.tabId);
++  if (!page) return false;
++  if (action.action === "activate") return putInFront(botId, page);
++  const others = running.pages.filter((candidate) => candidate !== page);
++  if (others.length === 0) {
++    const fresh = await profiles.openTab(botId);
++    await within(fresh.bringToFront(), 1_000);
++    await page.close();
++    if (action.replaceWith) await humanGoto(fresh, action.replaceWith);
++    return true;
++  }
++  const next = neighbourOf(running.pages, page, running.page);
++  if (next) await putInFront(botId, next);
++  await page.close();
++  return true;
++}
++
++/** OpenDuet patch 0006: the address bar and ← → ↻, on the tab the Bot follows. */
++async function humanNavigate(botId: string, action: NavigateAction): Promise<boolean> {
++  const target = await currentPage(botId, "navigate");
++  if ("url" in action) {
++    await humanGoto(target, action.url);
++    return true;
++  }
++  const waiting = { waitUntil: "commit" as const, timeout: HUMAN_NAVIGATION_MS };
++  try {
++    if (action.action === "reload") await target.reload(waiting);
++    else if (action.action === "back") await target.goBack(waiting);
++    else await target.goForward(waiting);
++  } catch (error) {
++    console.info(
++      JSON.stringify({
++        type: "computer-human-navigation-incomplete",
++        action: action.action,
++        reason: "navigation_incomplete",
++      }),
++    );
++  }
++  return true;
+ }
+ 
+ /**
+diff -ruN a/src/page-network.ts b/src/page-network.ts
+--- a/src/page-network.ts	2026-10-28 00:00:00
++++ b/src/page-network.ts	2026-10-28 00:00:00
+@@ -398,7 +398,12 @@
+     .catch(() => undefined);
+ }
+ 
+-const overridden = new WeakSet<Page>();
++/*
++ * OpenDuet patch 0006: the attach in progress or done, per page, rather than only whether one
++ * started, so a second caller waits for the first: a tab the person opens from the app is attached
++ * by the context's own `page` listener (not awaited) and awaited again before anything loads in it.
++ */
++const overridden = new WeakMap<Page, Promise<void>>();
+ 
+ /**
+  * A page's script sees `Chrome`, not `HeadlessChrome`. Headless only; awaited for the page a browser
+@@ -409,10 +414,15 @@
+   page: Page,
+   options: { headless: boolean },
+ ): Promise<void> {
+-  if (!options.headless || overridden.has(page)) return;
+-  overridden.add(page);
+-  const override = await userAgentFor(context, page);
+-  if (!override) return;
+-  const target = await sessionFor(context, page);
+-  if (target) await overrideUserAgent(target, override);
++  if (!options.headless) return;
++  const started = overridden.get(page);
++  if (started) return started;
++  const attach = (async () => {
++    const override = await userAgentFor(context, page);
++    if (!override) return;
++    const target = await sessionFor(context, page);
++    if (target) await overrideUserAgent(target, override);
++  })();
++  overridden.set(page, attach);
++  return attach;
+ }
+diff -ruN a/src/profiles.ts b/src/profiles.ts
+--- a/src/profiles.ts	2026-10-28 00:00:00
++++ b/src/profiles.ts	2026-10-28 00:00:00
+@@ -41,11 +41,18 @@
+ import { browserRuntimeFromEnv } from "./browser-runtime";
+ import { egressFor, egressLabel } from "./egress";
+ import { numberFromEnv, settleWithin } from "./env";
+-import { chooseFollowedPage, chooseLivePage, confirmShown } from "./live-page";
++import { chooseFollowedPage, confirmShown } from "./live-page";
+ import { attachBrowserNetwork, attachPageNetwork } from "./page-network";
+ import { botIdsIn } from "./profile-listing";
+-import { isWindowMode, screenFromEnv, windowArgs } from "./screen";
+ import {
++  isWindowMode,
++  type PageSpec,
++  pageArgs,
++  pageFor,
++  screenFromEnv,
++  windowArgs,
++} from "./screen";
++import {
+   type SessionCookieKeeper,
+   sessionCookieKeeper,
+ } from "./session-cookies";
+@@ -109,9 +116,20 @@
+  */
+ export const WINDOW_MODE = isWindowMode(BROWSER_RUNTIME);
+ export const SCREEN = screenFromEnv(process.env);
++/*
++ * OpenDuet patch 0006: the page a managed browser shows outside window mode (headless, the
++ * default): landscape 1280x800 at scale 1, or with COMPUTER_BROWSER_SCREEN=portrait 430x660 at
++ * scale 2. See screen.ts.
++ * A native Chrome is the person's own window and keeps upstream's viewport.
++ */
++export const PAGE: PageSpec =
++  !WINDOW_MODE && !LOCAL_CHROME
++    ? pageFor(SCREEN)
++    : { width: VIEWPORT.width, height: VIEWPORT.height, scale: 1 };
+ 
+ const LAUNCH_ARGS = [
+   ...(WINDOW_MODE ? windowArgs(SCREEN) : []),
++  ...(!WINDOW_MODE && !LOCAL_CHROME ? pageArgs(PAGE) : []),
+   // A headed Chromium with --no-sandbox shows an "unsupported command-line flag" bar across every
+   // page (56 DIP of a portrait screen, measured). --test-type is the switch Chromium checks before
+   // showing it; nothing a page can read changes (navigator.webdriver stays false).
+@@ -307,6 +325,10 @@
+     retarget: (justOpened?: Page) => void;
+     /** Window mode: point `page` at the tab the person has in front. */
+     follow: (shown: ShownPage) => Promise<void>;
++    /** OpenDuet patch 0006: point `page` at a tab the person picked; false when it is not open here. */
++    pick: (page: Page) => boolean;
++    /** How this browser's pages are attached (the headless user agent fix), for a tab opened later. */
++    network: { headless: boolean };
+     /** Keeps this browser's session cookies on the profile volume. Absent for a native Chrome. */
+     sessionCookies?: SessionCookieKeeper;
+   };
+@@ -514,7 +536,15 @@
+           // means the flag above decides nothing and a deployment that asked for the sandbox does
+           // not get one. Verified by reading the launched process arguments, not by trusting either.
+           chromiumSandbox: SANDBOX_ENABLED,
+-          viewport: WINDOW_MODE ? null : VIEWPORT,
++          // OpenDuet patch 0006: the headless page's size and scale (screen.ts); upstream's
++          // 1280x800 for a native Chrome and the landscape screen.
++          viewport: WINDOW_MODE
++            ? null
++            : { width: PAGE.width, height: PAGE.height },
++          ...(WINDOW_MODE || PAGE.scale === 1
++            ? {}
++            : { deviceScaleFactor: PAGE.scale }),
++          ...(!WINDOW_MODE && PAGE.screen ? { screen: PAGE.screen } : {}),
+           // This process owns shutdown. Playwright's signal handlers kill Chromium immediately on
+           // SIGTERM, before pending cookie writes have time to flush.
+           handleSIGTERM: false,
+@@ -562,6 +592,8 @@
+           usedAt: Date.now(),
+           retarget: () => {},
+           follow: async () => {},
++          pick: () => false,
++          network,
+           ...(sessionCookies ? { sessionCookies } : {}),
+         };
+         const moveTo = (next: Page, reason?: string) => {
+@@ -577,13 +609,20 @@
+         };
+         record.retarget = (justOpened) => {
+           // OpenDuet patch 0004: in window mode a page the person moved to is kept until it closes;
+-          // only a page that just opened takes over. Elsewhere the newest page, as upstream.
+-          const next = WINDOW_MODE
+-            ? chooseFollowedPage(context.pages(), record.page, justOpened)
+-            : chooseLivePage(context.pages());
++          // only a page that just opened takes over. OpenDuet patch 0006: headless too, now that a
++          // person picks tabs from the app's own tab strip (`pick`): upstream's "newest page"
++          // would take the Bot back to the newest tab at its next call. A page that opens (a
++          // popup, a link to a new tab) still takes over, and closing the followed one falls back
++          // to the newest that is open, as before.
++          const next = chooseFollowedPage(context.pages(), record.page, justOpened);
+           if (!next || next === record.page) return;
+           moveTo(next);
+         };
++        record.pick = (chosen) => {
++          if (chosen.isClosed() || !context.pages().includes(chosen)) return false;
++          if (chosen !== record.page) moveTo(chosen, "the person picked a tab");
++          return true;
++        };
+         record.follow = async (shown) => {
+           const open = context.pages().filter((candidate) => !candidate.isClosed());
+           if (open.length < 2) return;
+@@ -709,6 +748,46 @@
+     async followShown(botId: string): Promise<void> {
+       const running = live.get(botId);
+       if (running && options.shownPage) await running.follow(options.shownPage);
++    },
++
++    /**
++     * OpenDuet patch 0006: this Bot's open tabs and the one it follows, without starting anything
++     * (the app's tab strip asks while nobody may want a browser). Undefined when none is running.
++     */
++    running(botId: string): { context: BrowserContext; pages: Page[]; page: Page } | undefined {
++      const running = live.get(botId);
++      if (!running?.context.browser()?.isConnected()) return undefined;
++      running.retarget();
++      if (running.page.isClosed()) return undefined;
++      return {
++        context: running.context,
++        pages: running.context.pages().filter((page) => !page.isClosed()),
++        page: running.page,
++      };
++    },
++
++    /** OpenDuet patch 0006: the person picked this tab; the Bot follows it from now on. */
++    pick(botId: string, page: Page): boolean {
++      const running = live.get(botId);
++      if (!running) return false;
++      running.usedAt = Date.now();
++      return running.pick(page);
++    },
++
++    /**
++     * OpenDuet patch 0006: a new tab, ready before anything loads in it: the headless user agent
++     * fix is attached first (the context's own `page` listener starts that too, without waiting),
++     * then the Bot follows it. The caller starts the browser first (`page`).
++     */
++    async openTab(botId: string): Promise<Page> {
++      const running = live.get(botId);
++      if (!running) throw new Error("The browser is not running.");
++      const opened = await running.context.newPage();
++      if (!LOCAL_CHROME)
++        await attachPageNetwork(running.context, opened, running.network);
++      running.usedAt = Date.now();
++      running.pick(opened);
++      return opened;
+     },
+ 
+     /** How many browsers are running. For the idle sweep's own tests, and for a status reader. */
+diff -ruN a/src/screen.ts b/src/screen.ts
+--- a/src/screen.ts	2026-10-28 00:00:00
++++ b/src/screen.ts	2026-10-28 00:00:00
+@@ -9,6 +9,9 @@
+  * near an iPhone's width, at a size the phone can read. `COMPUTER_BROWSER_SCREEN=landscape` gives
+  * the earlier 1280x800 at scale 1.
+  *
++ * OpenDuet patch 0006 (M27 C2): landscape is now the default, headed and headless alike; portrait
++ * is the option.
++ *
+  * The user agent stays desktop Chrome; a narrow window only makes responsive sites lay out narrow.
+  */
+ import type { BrowserRuntime } from "./browser-runtime";
+@@ -32,7 +35,9 @@
+ export function screenFromEnv(
+   env: Record<string, string | undefined>,
+ ): ScreenSpec {
+-  const raw = env.COMPUTER_BROWSER_SCREEN?.trim() || "portrait";
++  // OpenDuet patch 0006 (M27 C2): landscape by default, so the assistant's screenshots are wide; portrait
++  // stays an option.
++  const raw = env.COMPUTER_BROWSER_SCREEN?.trim() || "landscape";
+   if (raw !== "portrait" && raw !== "landscape") {
+     throw new Error(
+       `COMPUTER_BROWSER_SCREEN must be portrait or landscape, not ${JSON.stringify(raw)}.`,
+@@ -66,4 +71,63 @@
+     "--window-position=0,0",
+     `--window-size=${dip(screen.width)},${dip(screen.height)}`,
+   ];
++}
++
++/*
++ * OpenDuet patch 0006: the page a headless browser shows, which is what the live screen casts.
++ *
++ * Headless has no window to cast, so the phone sees only the page and draws its own tab strip and
++ * address bar above it. Portrait (an option) is a page close to a phone's: 430 CSS px wide, the
++ * width of a large iPhone, and 660 tall, about what the full-screen view has left under the app's
++ * own bars on a 6.1-6.9" iPhone, so the whole page shows at the full width. Device scale factor 2,
++ * so the cast is 860x1320 device pixels and text stays sharp on the phone. The user agent stays
++ * desktop Chrome (a phone's would be easier to catch out); responsive sites lay out narrow.
++ *
++ * `screen` is a desktop's (1920x1080) rather than Playwright's default, which is the viewport: a
++ * headless window is never narrower than 500 DIP, so with the default a page read `outerWidth`
++ * 500 on a `screen.width` of 430, which no real browser shows. A narrow window on a HiDPI screen is
++ * what a person with a browser beside something else has.
++ *
++ * Landscape, the default (M27 C2: the assistant's screenshots must be wide; the phone fits the page to
++ * its width, or turns it to fill the screen), is the earlier 1280x800 at scale 1 with
++ * Playwright's defaults.
++ */
++export type PageSpec = {
++  /** The viewport, in CSS pixels: what the cast's frames report and what input lands in. */
++  width: number;
++  height: number;
++  /** The device scale factor, emulated and forced, so the page and the cast agree. */
++  scale: number;
++  /** What `window.screen` says, or Playwright's default (the viewport). */
++  screen?: { width: number; height: number };
++};
++
++const PAGES: Record<ScreenLayout, PageSpec> = {
++  portrait: { width: 430, height: 660, scale: 2, screen: { width: 1920, height: 1080 } },
++  landscape: { width: 1280, height: 800, scale: 1 },
++};
++
++export function pageFor(screen: ScreenSpec): PageSpec {
++  return PAGES[screen.layout];
++}
++
++/**
++ * Chromium flags for a headless page at this scale. Playwright emulates the device scale factor
++ * for the page, but the cast is encoded at the compositor's own scale, so without the flag a
++ * portrait page at scale 2 casts 430x660 JPEGs (measured, Chromium 151 headless).
++ */
++export function pageArgs(page: PageSpec): string[] {
++  return page.scale === 1 ? [] : [`--force-device-scale-factor=${page.scale}`];
++}
++
++/**
++ * The screencast's size caps for this page. Chrome reads `maxWidth` / `maxHeight` in device
++ * pixels while its frame metadata stays in CSS pixels: the earlier fixed 1280x800 shrank a
++ * portrait page's 860x1320 frame to 521x800.
++ */
++export function castLimits(page: PageSpec): { maxWidth: number; maxHeight: number } {
++  return {
++    maxWidth: Math.round(page.width * page.scale),
++    maxHeight: Math.round(page.height * page.scale),
++  };
+ }
+diff -ruN a/src/screencast.ts b/src/screencast.ts
+--- a/src/screencast.ts	2026-10-28 00:00:00
++++ b/src/screencast.ts	2026-10-28 00:00:00
+@@ -238,6 +238,25 @@
+           message.event === "up"
+             ? message.text
+             : (message.text ?? TEXT_FOR_KEY[message.key]);
++        /*
++         * OpenDuet patch 0006: taken from CopilotKit/OpenBot's agent-computer 0.2.0
++         * (src/screencast.ts, MIT), which fixed this after the commit we pin; its words follow.
++         *
++         * NO `nativeVirtualKeyCode`, so the key reaches the page and never the browser itself.
++         *
++         * Chrome hands a key the page did not handle on to the browser's own shortcuts only when the
++         * event names a native key code (content/browser/devtools/protocol/input_handler.cc: without
++         * one the event is `skip_if_unhandled`, which also skips the shortcuts Chrome takes before the
++         * page, such as closing the tab). And on macOS that code is read as the Mac's own key number,
++         * not the Windows one this used to send: 37, the left arrow's, is the Mac's L, and 36, Home's,
++         * is its Return (native_input_event_builder_mac.mm builds the browser's event from it).
++         * Measured on Chrome for Testing 151 headless on macOS, a person's ArrowLeft reached the page
++         * as an unnamed key 76, and with Home after it the browser stopped answering DevTools at all;
++         * in the end-to-end run it opened chrome://settings/help and then spun a core until its
++         * computer was restarted. Without the native code every key arrived as itself and moved the
++         * caret, deleted and tabbed as it should. Playwright's and Puppeteer's own keyboards never send
++         * one either.
++         */
+         await client.send("Input.dispatchKeyEvent", {
+           // `keyDown` only when there is text to insert; otherwise `rawKeyDown`, which is what Chrome
+           // expects for keys that do not produce a character. Sending keyDown with no text makes
+@@ -248,7 +267,6 @@
+           code: message.code,
+           ...(text ? { text } : {}),
+           windowsVirtualKeyCode: code,
+-          nativeVirtualKeyCode: code,
+           modifiers: message.modifiers ?? 0,
+         });
+         return;
+diff -ruN a/tests/bot-tabs-browser.test.ts b/tests/bot-tabs-browser.test.ts
+--- a/tests/bot-tabs-browser.test.ts	1970-01-01 08:00:00
++++ b/tests/bot-tabs-browser.test.ts	2026-10-28 00:00:00
+@@ -0,0 +1,187 @@
++import { afterAll, beforeAll, describe, expect, test } from "bun:test";
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import type { Page } from "playwright";
++
++/**
++ * OpenDuet patch 0006: the headless page and the Bot's tabs, against a real Chromium launched
++ * through the real profile path.
++ *
++ * What it proves beyond `bot-tabs.test.ts`: the page is the size its layout says (landscape, the
++ * default: 1280x800 at scale 1; portrait: 430x660 at scale 2) and casts JPEGs of that size in
++ * device px whose metadata stays in CSS px; tab ids are the browser's own; the Bot keeps the tab a
++ * person picked (headless too) and moves to a neighbour or the newest when it closes; history and
++ * Chromium's error page read as the app's bar needs; a tab opened for a person has the headless
++ * user agent fix before anything loads in it.
++ *
++ *   OPENBOT_COMPUTER_BROWSER=1 bun test tests/bot-tabs-browser.test.ts
++ *   OPENBOT_COMPUTER_BROWSER=1 TABS_TEST_SCREEN=portrait bun test tests/bot-tabs-browser.test.ts
++ */
++const asked = process.env.OPENBOT_COMPUTER_BROWSER === "1";
++const layout = process.env.TABS_TEST_SCREEN === "portrait" ? "portrait" : "landscape";
++const expected =
++  layout === "portrait"
++    ? { width: 430, height: 660, dpr: 2, screen: [1920, 1080], jpeg: [860, 1320] }
++    : { width: 1280, height: 800, dpr: 1, screen: undefined, jpeg: [1280, 800] };
++
++type Profiles = ReturnType<typeof import("../src/profiles")["createProfiles"]>;
++let profiles: Profiles;
++let root: string;
++let site: ReturnType<typeof Bun.serve>;
++const BOT = "tabs-bot";
++
++beforeAll(async () => {
++  if (!asked) return;
++  process.env.COMPUTER_BROWSER_MODE = "headless";
++  if (layout === "portrait") process.env.COMPUTER_BROWSER_SCREEN = "portrait";
++  else delete process.env.COMPUTER_BROWSER_SCREEN;
++  site = Bun.serve({
++    hostname: "127.0.0.1",
++    port: 0,
++    fetch: (request) => {
++      const path = new URL(request.url).pathname;
++      return new Response(`<!doctype html><title>Page ${path}</title><p>${path}</p>`, {
++        headers: { "content-type": "text/html" },
++      });
++    },
++  });
++  const { createProfiles } = await import("../src/profiles?bot-tabs-browser");
++  root = await mkdtemp(join(tmpdir(), "openduet-tabs-"));
++  profiles = createProfiles(root, () => {});
++});
++
++afterAll(async () => {
++  if (!asked) return;
++  await profiles?.closeAll();
++  site?.stop(true);
++  await rm(root, { recursive: true, force: true });
++});
++
++const at = (path: string) => `http://127.0.0.1:${site.port}${path}`;
++
++describe.skipIf(!asked)("the headless page and its tabs", () => {
++  test(`is ${layout}, as its layout says, with the desktop user agent`, async () => {
++    const page = await profiles.page(BOT);
++    await page.goto(at("/size"));
++    const seen = await page.evaluate(() => ({
++      width: innerWidth,
++      height: innerHeight,
++      dpr: devicePixelRatio,
++      screen: [screen.width, screen.height],
++      outerWithinScreen: outerWidth <= screen.width,
++      agent: navigator.userAgent,
++    }));
++    expect(seen).toMatchObject({ width: expected.width, height: expected.height, dpr: expected.dpr });
++    if (expected.screen) expect(seen.screen).toEqual(expected.screen);
++    expect(seen.outerWithinScreen).toBe(true);
++    expect(seen.agent).not.toContain("HeadlessChrome");
++  });
++
++  test("casts JPEGs in device px whose metadata stays in CSS px", async () => {
++    const { startScreencast } = await import("../src/screencast");
++    const { castLimits, pageFor, screenFromEnv } = await import("../src/screen");
++    const page = await profiles.page(BOT);
++    const frame = await new Promise<{ data: string; width: number; height: number }>(
++      (resolve) => {
++        void startScreencast(page, (sent) => resolve(sent), castLimits(pageFor(screenFromEnv(process.env))))
++          .then((cast) => {
++            // Something has to change on the page for Chrome to send a frame.
++            void page.evaluate(() => {
++              document.body.style.background = "#eee";
++            });
++            setTimeout(() => void cast.stop(), 3_000);
++          });
++      },
++    );
++    expect([frame.width, frame.height]).toEqual([expected.width, expected.height]);
++    const bytes = Buffer.from(frame.data, "base64");
++    // The JPEG's own size, from its first start-of-frame marker.
++    let offset = 2;
++    let size: [number, number] | undefined;
++    while (offset < bytes.length) {
++      const marker = bytes[offset + 1]!;
++      const length = bytes.readUInt16BE(offset + 2);
++      if (marker >= 0xc0 && marker <= 0xc2) {
++        size = [bytes.readUInt16BE(offset + 7), bytes.readUInt16BE(offset + 5)];
++        break;
++      }
++      offset += 2 + length;
++    }
++    expect(size).toEqual(expected.jpeg);
++  });
++
++  test("lists tabs by the browser's ids; the Bot keeps the tab a person picked", async () => {
++    const { listTabs, pageWithId } = await import("../src/bot-tabs");
++    const first = await profiles.page(BOT);
++    await first.goto(at("/one"));
++    const second = await profiles.openTab(BOT);
++    await second.goto(at("/two"));
++    let running = profiles.running(BOT)!;
++    expect(running.page).toBe(second);
++    const listed = await listTabs(running.pages, running.page);
++    expect(listed.tabs.map((tab) => [tab.title, tab.active])).toEqual([
++      ["Page /one", false],
++      ["Page /two", true],
++    ]);
++    // The browser's own target id, and it finds the page again.
++    expect(listed.tabs[0]!.id).toMatch(/^[0-9A-F]{32}$/);
++    expect(await pageWithId(running.pages, listed.tabs[0]!.id)).toBe(first);
++
++    // Picked, and kept at the Bot's next call: upstream's "newest page" would have moved it back.
++    expect(profiles.pick(BOT, first)).toBe(true);
++    expect(await profiles.page(BOT)).toBe(first);
++    running = profiles.running(BOT)!;
++    expect((await listTabs(running.pages, running.page)).tabs[0]!.active).toBe(true);
++
++    // The followed tab closing hands over to the newest open one.
++    await first.close();
++    expect(await profiles.page(BOT)).toBe(second);
++  });
++
++  test("a tab opened for a person says Chrome, not HeadlessChrome, from its first request", async () => {
++    let agent = "";
++    const watched = Bun.serve({
++      hostname: "127.0.0.1",
++      port: 0,
++      fetch: (request) => {
++        agent = request.headers.get("user-agent") ?? "";
++        return new Response("<title>ua</title>", { headers: { "content-type": "text/html" } });
++      },
++    });
++    try {
++      const opened = await profiles.openTab(BOT);
++      await opened.goto(`http://127.0.0.1:${watched.port}/`);
++      expect(agent).not.toContain("HeadlessChrome");
++      expect(await opened.evaluate(() => navigator.userAgent)).not.toContain("HeadlessChrome");
++      await opened.close();
++    } finally {
++      watched.stop(true);
++    }
++  });
++
++  test("history and Chromium's error page read as the bar needs them", async () => {
++    const { listTabs } = await import("../src/bot-tabs");
++    const page: Page = await profiles.page(BOT);
++    await page.goto(at("/a"));
++    await page.goto(at("/b"));
++    let running = profiles.running(BOT)!;
++    expect(await listTabs(running.pages, page)).toMatchObject({
++      canGoBack: true,
++      canGoForward: false,
++    });
++    await page.goBack({ waitUntil: "commit" });
++    running = profiles.running(BOT)!;
++    expect(await listTabs(running.pages, page)).toMatchObject({ canGoForward: true });
++
++    // Nothing listens on port 9 here: the tab shows Chromium's error page for the address.
++    const failed = "http://127.0.0.1:9/nothing";
++    await page.goto(failed).catch(() => undefined);
++    const deadline = Date.now() + 2_000;
++    while (!page.url().startsWith("chrome-error://") && Date.now() < deadline)
++      await new Promise((resolve) => setTimeout(resolve, 25));
++    running = profiles.running(BOT)!;
++    const shown = (await listTabs(running.pages, page)).tabs.find((tab) => tab.active);
++    expect(shown?.url).toBe(failed);
++  });
++});
+diff -ruN a/tests/bot-tabs.test.ts b/tests/bot-tabs.test.ts
+--- a/tests/bot-tabs.test.ts	1970-01-01 08:00:00
++++ b/tests/bot-tabs.test.ts	2026-10-28 00:00:00
+@@ -0,0 +1,224 @@
++// OpenDuet patch 0006: the Bot's tabs for the app's own tab strip and address bar.
++import { describe, expect, test } from "bun:test";
++import {
++  fingerprint,
++  listTabs,
++  neighbourOf,
++  oneAtATime,
++  pageWithId,
++  parseNavigateAction,
++  parseTabAction,
++  shownUrl,
++  type TabPage,
++  tabsChanged,
++  watchTabs,
++} from "../src/bot-tabs";
++
++type Fake = TabPage & { asked: string[] };
++
++/** A page whose DevTools session answers like Chromium's, counting the sessions opened. */
++function fakePage(
++  id: string,
++  url: string,
++  title: string,
++  options: { history?: [number, number]; closed?: boolean; silent?: boolean } = {},
++  opened = { count: 0 },
++): Fake {
++  const asked: string[] = [];
++  const page: Fake = {
++    asked,
++    url: () => url,
++    isClosed: () => options.closed ?? false,
++    context: () => ({
++      newCDPSession: async () => {
++        opened.count += 1;
++        return {
++          send: (async (method: string) => {
++            asked.push(method);
++            if (options.silent) return new Promise(() => {});
++            if (method === "Target.getTargetInfo")
++              return {
++                targetInfo: {
++                  targetId: id,
++                  url: url.startsWith("chrome-error://") ? "https://failed.example/" : url,
++                  title,
++                },
++              };
++            const [currentIndex, length] = options.history ?? [0, 1];
++            return { currentIndex, entries: Array.from({ length }) };
++          }) as never,
++        };
++      },
++    }),
++  };
++  return page;
++}
++
++describe("listing the tabs", () => {
++  test("in the browser's order, with the followed one active and its history", async () => {
++    const a = fakePage("A", "https://a.example/", "A");
++    const b = fakePage("B", "https://b.example/", "B", { history: [1, 3] });
++    expect(await listTabs([a, b], b)).toEqual({
++      tabs: [
++        { id: "A", url: "https://a.example/", title: "A", active: false },
++        { id: "B", url: "https://b.example/", title: "B", active: true },
++      ],
++      canGoBack: true,
++      canGoForward: true,
++    });
++    // Only the followed tab's history is asked.
++    expect(a.asked).toEqual(["Target.getTargetInfo"]);
++  });
++
++  test("at either end of the history, the arrow that has nowhere to go is off", async () => {
++    const first = fakePage("A", "https://a.example/", "A", { history: [0, 2] });
++    expect(await listTabs([first], first)).toMatchObject({ canGoBack: false, canGoForward: true });
++    const last = fakePage("B", "https://b.example/", "B", { history: [1, 2] });
++    expect(await listTabs([last], last)).toMatchObject({ canGoBack: true, canGoForward: false });
++  });
++
++  test("an error page shows the address that failed, as Chrome's own bar does", async () => {
++    const failed = fakePage("A", "chrome-error://chromewebdata/", "failed.example");
++    const listed = await listTabs([failed], failed);
++    expect(listed.tabs[0]?.url).toBe("https://failed.example/");
++    expect(shownUrl("https://a.example/", "https://other.example/")).toBe("https://a.example/");
++  });
++
++  test("a closed tab is left out, and one that does not answer does not hold up the rest", async () => {
++    const closed = fakePage("A", "https://a.example/", "A", { closed: true });
++    const silent = fakePage("B", "https://b.example/", "B", { silent: true });
++    const fine = fakePage("C", "https://c.example/", "C");
++    const started = Date.now();
++    const listed = await listTabs([closed, silent, fine], fine);
++    expect(listed.tabs.map((tab) => tab.id)).toEqual(["C"]);
++    expect(Date.now() - started).toBeLessThan(1_500);
++  });
++
++  test("one session per page, kept between listings", async () => {
++    const opened = { count: 0 };
++    const a = fakePage("A", "https://a.example/", "A", {}, opened);
++    await listTabs([a], a);
++    await listTabs([a], a);
++    expect(opened.count).toBe(1);
++  });
++
++  test("a tab is found by its id", async () => {
++    const a = fakePage("A", "https://a.example/", "A");
++    const b = fakePage("B", "https://b.example/", "B");
++    expect(await pageWithId([a, b], "B")).toBe(b);
++    expect(await pageWithId([a, b], "nope")).toBeUndefined();
++  });
++});
++
++describe("closing the followed tab", () => {
++  test("hands over to the tab on its right, else on its left, as a browser does", () => {
++    expect(neighbourOf(["a", "b", "c"], "b", "b")).toBe("c");
++    expect(neighbourOf(["a", "b", "c"], "c", "c")).toBe("b");
++    expect(neighbourOf(["a"], "a", "a")).toBeUndefined();
++    // Another tab closing leaves the followed one where it is.
++    expect(neighbourOf(["a", "b", "c"], "a", "c")).toBeUndefined();
++  });
++});
++
++describe("what a person asks for", () => {
++  test("a new tab, empty or at a web address", () => {
++    expect(parseTabAction({ action: "new" })).toEqual({ ok: true, value: { action: "new" } });
++    expect(parseTabAction({ action: "new", url: " https://a.example/ " })).toEqual({
++      ok: true,
++      value: { action: "new", url: "https://a.example/" },
++    });
++    expect(parseTabAction({ action: "new", url: "file:///etc/passwd" }).ok).toBe(false);
++    expect(parseTabAction({ action: "new", url: "javascript:alert(1)" }).ok).toBe(false);
++  });
++
++  test("activate and close name a tab; close may name the page that replaces the last one", () => {
++    expect(parseTabAction({ action: "activate", tabId: "T1" })).toEqual({
++      ok: true,
++      value: { action: "activate", tabId: "T1" },
++    });
++    expect(parseTabAction({ action: "close", tabId: "T1", replaceWith: "https://www.bing.com/" }))
++      .toEqual({
++        ok: true,
++        value: { action: "close", tabId: "T1", replaceWith: "https://www.bing.com/" },
++      });
++    expect(parseTabAction({ action: "close" }).ok).toBe(false);
++    expect(parseTabAction({ action: "activate", tabId: "x".repeat(201) }).ok).toBe(false);
++    expect(parseTabAction({ action: "close", tabId: "T1", replaceWith: "chrome://settings" }).ok)
++      .toBe(false);
++    expect(parseTabAction({ action: "move", tabId: "T1" }).ok).toBe(false);
++    expect(parseTabAction(null).ok).toBe(false);
++  });
++
++  test("navigate: a web address, or back, forward or reload", () => {
++    expect(parseNavigateAction({ url: "https://a.example/" })).toEqual({
++      ok: true,
++      value: { url: "https://a.example/" },
++    });
++    for (const action of ["back", "forward", "reload"] as const)
++      expect(parseNavigateAction({ action })).toEqual({ ok: true, value: { action } });
++    expect(parseNavigateAction({ url: "about:blank" }).ok).toBe(false);
++    expect(parseNavigateAction({ url: `https://a.example/${"x".repeat(2000)}` }).ok).toBe(false);
++    expect(parseNavigateAction({ action: "home" }).ok).toBe(false);
++    expect(parseNavigateAction({}).ok).toBe(false);
++  });
++});
++
++describe("telling the live screen", () => {
++  test("a change reaches the screen registered for that Bot, and only until it unregisters", () => {
++    let seen = 0;
++    const stop = watchTabs("bot-tabs-a", () => {
++      seen += 1;
++    });
++    tabsChanged("bot-tabs-a");
++    tabsChanged("bot-tabs-b");
++    stop();
++    tabsChanged("bot-tabs-a");
++    expect(seen).toBe(1);
++  });
++
++  test("a replaced screen unregistering does not remove its replacement", () => {
++    let replacement = 0;
++    const first = watchTabs("bot-tabs-c", () => {});
++    watchTabs("bot-tabs-c", () => {
++      replacement += 1;
++    });
++    first();
++    tabsChanged("bot-tabs-c");
++    expect(replacement).toBe(1);
++  });
++
++  test("the same state is the same fingerprint", () => {
++    const state = { tabs: [], canGoBack: false, canGoForward: false };
++    expect(fingerprint(state)).toBe(fingerprint({ ...state }));
++    expect(fingerprint(state)).not.toBe(fingerprint({ ...state, canGoBack: true }));
++  });
++
++  test("checks run one at a time, and those asked meanwhile become one more", async () => {
++    let running = 0;
++    let most = 0;
++    let runs = 0;
++    const check = oneAtATime(async () => {
++      running += 1;
++      runs += 1;
++      most = Math.max(most, running);
++      await new Promise((resolve) => setTimeout(resolve, 20));
++      running -= 1;
++    });
++    await Promise.all([check(), check(), check(), check()]);
++    // The fourth call joined the run the second started, so: the first, then one more.
++    await check();
++    expect(most).toBe(1);
++    expect(runs).toBe(3);
++  });
++
++  test("a check that fails does not stop the next", async () => {
++    let runs = 0;
++    const check = oneAtATime(async () => {
++      runs += 1;
++      throw new Error("browser went away");
++    });
++    await check();
++    await check();
++    expect(runs).toBe(2);
++  });
++});
+diff -ruN a/tests/screen.test.ts b/tests/screen.test.ts
+--- a/tests/screen.test.ts	2026-10-28 00:00:00
++++ b/tests/screen.test.ts	2026-10-28 00:00:00
+@@ -2,7 +2,10 @@
+ import { describe, expect, test } from "bun:test";
+ import { browserRuntimeFromEnv } from "../src/browser-runtime";
+ import {
++  castLimits,
+   isWindowMode,
++  pageArgs,
++  pageFor,
+   screenFromEnv,
+   windowArgs,
+   xvfbGeometry,
+@@ -14,8 +17,13 @@
+ } from "../src/virtual-display";
+ 
+ describe("the virtual screen", () => {
+-  test("is portrait by default: 860x1600 at scale 1.72, a 500 CSS px page", () => {
+-    const screen = screenFromEnv({});
++  test("is landscape by default (patch 0006, M27 C2): 1280x800 at scale 1", () => {
++    expect(screenFromEnv({})).toEqual({ layout: "landscape", width: 1280, height: 800, scale: 1 });
++    expect(screenFromEnv({ COMPUTER_BROWSER_SCREEN: " " })).toEqual(screenFromEnv({}));
++  });
++
++  test("portrait is 860x1600 at scale 1.72, a 500 CSS px page", () => {
++    const screen = screenFromEnv({ COMPUTER_BROWSER_SCREEN: "portrait" });
+     expect(screen).toEqual({
+       layout: "portrait",
+       width: 860,
+@@ -93,5 +101,33 @@
+       screenFromEnv({ COMPUTER_BROWSER_SCREEN: "portrait" }),
+     );
+     expect(spawned[0]).toContain("860x1600x24");
++  });
++});
++
++// OpenDuet patch 0006: the page a headless browser shows, which is all its live screen casts.
++describe("the headless page", () => {
++  test("is landscape by default: the earlier 1280x800 at scale 1", () => {
++    expect(pageFor(screenFromEnv({}))).toEqual({ width: 1280, height: 800, scale: 1 });
++  });
++
++  test("portrait (an option) is 430x660 CSS px at scale 2, on a desktop-sized screen", () => {
++    const page = pageFor(screenFromEnv({ COMPUTER_BROWSER_SCREEN: "portrait" }));
++    expect(page).toEqual({
++      width: 430,
++      height: 660,
++      scale: 2,
++      screen: { width: 1920, height: 1080 },
++    });
++    // The cast is encoded at the compositor's scale, so the flag is what makes it 860x1320.
++    expect(pageArgs(page)).toEqual(["--force-device-scale-factor=2"]);
++    // Chrome reads the screencast caps in device pixels; 1280x800 shrank this frame to 521x800.
++    expect(castLimits(page)).toEqual({ maxWidth: 860, maxHeight: 1320 });
++  });
++
++  test("landscape is the earlier 1280x800 at scale 1, with no flag and the same caps as before", () => {
++    const page = pageFor(screenFromEnv({ COMPUTER_BROWSER_SCREEN: "landscape" }));
++    expect(page).toEqual({ width: 1280, height: 800, scale: 1 });
++    expect(pageArgs(page)).toEqual([]);
++    expect(castLimits(page)).toEqual({ maxWidth: 1280, maxHeight: 800 });
+   });
+ });
+diff -ruN a/tests/screencast-keys-browser.test.ts b/tests/screencast-keys-browser.test.ts
+--- a/tests/screencast-keys-browser.test.ts	1970-01-01 08:00:00
++++ b/tests/screencast-keys-browser.test.ts	2026-10-28 00:00:00
+@@ -0,0 +1,195 @@
++// OpenDuet patch 0006: from CopilotKit/OpenBot's agent-computer 0.2.0 (tests/screencast-keys-browser.test.ts, MIT),
++// unchanged but for this line: the real-browser half of the keyboard fix in src/screencast.ts.
++import { afterAll, beforeAll, describe, expect, test } from "bun:test";
++import type { Browser, CDPSession, Page } from "playwright";
++import { type InputMessage, startScreencast } from "../src/screencast";
++
++/**
++ * A key a person presses on the live screen, against Chromium itself: it reaches the page as the key it is, and never
++ * the browser's own shortcuts.
++ *
++ * `screencast.test.ts` pins the parameters; this is what Chromium does with them, which is where the fault was. Each
++ * key used to name a native key code, the Windows one. Chrome then passes a key the page did not take on to the browser,
++ * and on macOS reads the code as the Mac's own key number: in the end-to-end run a person's ArrowLeft on the Browser
++ * page opened chrome://settings/help in their browser, which then spun a core until its computer was restarted. Measured
++ * on Chrome for Testing 151 headless on macOS, ArrowLeft reached the page as an unnamed key 76 (the Mac's L), and with
++ * Home after it (the Mac's Return) the browser stopped answering DevTools. On Linux the same native code lets a
++ * forwarded Ctrl+T open a tab, or Alt+ArrowLeft go back, in the person's browser rather than in the page.
++ *
++ *   OPENBOT_COMPUTER_BROWSER=1 bun test tests/screencast-keys-browser.test.ts
++ */
++const asked = process.env.OPENBOT_COMPUTER_BROWSER === "1";
++
++/** How long the browser has to answer DevTools after a key: a healthy one answers in milliseconds. */
++const ANSWER_MS = 3_000;
++
++const PAGE = `<!doctype html><title>Keys</title>
++<p>Nothing to type into until Tab reaches it.</p>
++<input id="field" value="hello">
++<script>
++  window.keys = [];
++  addEventListener("keydown", (event) => keys.push(event.key));
++</script>`;
++
++let browser: Browser;
++
++beforeAll(async () => {
++  if (!asked) return;
++  const { chromium } = await import("playwright");
++  // The build the computer launches and CI installs, as enter-text.test.ts says; on macOS, the full browser that held
++  // the person's browser in the end-to-end run, not the separate headless shell.
++  browser = await chromium.launch({ channel: "chromium" });
++});
++
++afterAll(async () => {
++  await browser?.close();
++});
++
++/** Within `ms`, or a sentence saying what did not answer: a wedged browser never answers at all. */
++function within<T>(work: Promise<T>, what: string, ms = ANSWER_MS): Promise<T> {
++  return Promise.race([
++    work,
++    new Promise<never>((_, reject) =>
++      setTimeout(() => reject(new Error(`${what} did not answer.`)), ms),
++    ),
++  ]);
++}
++
++/** A keystroke exactly as the live screen sends one (app/src/components/computer/live-screen.tsx). */
++function press(
++  key: string,
++  code: string,
++  keyCode: number,
++  modifiers = 0,
++): InputMessage[] {
++  const text = key.length === 1 ? { text: key } : {};
++  return [
++    {
++      type: "key",
++      event: "down",
++      key,
++      code,
++      windowsVirtualKeyCode: keyCode,
++      ...text,
++      modifiers,
++    },
++    {
++      type: "key",
++      event: "up",
++      key,
++      code,
++      windowsVirtualKeyCode: keyCode,
++      modifiers,
++    },
++  ];
++}
++
++/** A tab with the page on it, cast as the live screen casts it, and the browser's own DevTools session. */
++async function cast(): Promise<{
++  tab: Page;
++  send: (messages: InputMessage[]) => Promise<void>;
++  pages: () => Promise<string[]>;
++  stop: () => Promise<void>;
++  session: CDPSession;
++}> {
++  const context = await browser.newContext();
++  const tab = await context.newPage();
++  await tab.setContent(PAGE);
++  const screencast = await startScreencast(tab, () => {});
++  const session = await browser.newBrowserCDPSession();
++  return {
++    tab,
++    session,
++    send: async (messages) => {
++      for (const message of messages)
++        await within(screencast.send(message), "The key");
++    },
++    // Every tab the browser has, whichever window it opened in: the browser's own answer, not Playwright's.
++    pages: async () =>
++      (
++        await within(session.send("Target.getTargets"), "The browser")
++      ).targetInfos
++        .filter((target) => target.type === "page")
++        .map((target) => target.url),
++    stop: async () => {
++      await screencast.stop();
++      await session.detach().catch(() => undefined);
++      await context.close();
++    },
++  };
++}
++
++const keysSeen = (tab: Page) =>
++  within(
++    tab.evaluate(() => (window as unknown as { keys: string[] }).keys),
++    "The page",
++  );
++
++describe.skipIf(!asked)("a key from the live screen", () => {
++  test("reaches the page as the key it is, with nothing focused, and the browser keeps answering", async () => {
++    const { tab, send, pages, stop } = await cast();
++    const before = await pages();
++    for (const [key, code, keyCode] of [
++      ["ArrowLeft", "ArrowLeft", 37],
++      ["Home", "Home", 36],
++      ["End", "End", 35],
++      ["Delete", "Delete", 46],
++      ["ArrowRight", "ArrowRight", 39],
++    ] as const) {
++      await send(press(key, code, keyCode));
++      expect((await keysSeen(tab)).at(-1)).toBe(key);
++      // Nothing opened in the browser: the key stayed in the page.
++      expect(await pages()).toEqual(before);
++    }
++    await stop();
++  });
++
++  test("still edits a field: Tab reaches it, and the arrows, Home, Backspace and Delete do what they mean", async () => {
++    const { tab, send, stop } = await cast();
++    await send(press("Tab", "Tab", 9));
++    expect(await tab.evaluate(() => document.activeElement?.id)).toBe("field");
++    const caret = () =>
++      within(
++        tab.evaluate(() => {
++          const field = document.getElementById("field") as HTMLInputElement;
++          return { value: field.value, at: field.selectionStart };
++        }),
++        "The page",
++      );
++    await tab.evaluate(() =>
++      (document.getElementById("field") as HTMLInputElement).setSelectionRange(
++        5,
++        5,
++      ),
++    );
++    await send(press("ArrowLeft", "ArrowLeft", 37));
++    expect(await caret()).toEqual({ value: "hello", at: 4 });
++    await send(press("Backspace", "Backspace", 8));
++    expect(await caret()).toEqual({ value: "helo", at: 3 });
++    await send(press("Home", "Home", 36));
++    await send(press("Delete", "Delete", 46));
++    expect(await caret()).toEqual({ value: "elo", at: 0 });
++    await send(press("End", "End", 35));
++    await send(press("!", "Digit1", 49, 8));
++    expect(await caret()).toEqual({ value: "elo!", at: 4 });
++    await stop();
++  });
++
++  test("never works the browser's own shortcuts: no new tab, and no going back", async () => {
++    const { tab, send, pages, stop } = await cast();
++    // Two pages in the tab's history, so a Back the browser took would show.
++    await tab.goto("data:text/html,<title>First</title>");
++    await tab.goto(`data:text/html,${encodeURIComponent(PAGE)}`);
++    const before = await pages();
++    // Ctrl+T and Ctrl+N, a new tab and a new window, and Alt+ArrowLeft, Back, on Linux and Windows.
++    await send(press("t", "KeyT", 84, 2));
++    await send(press("n", "KeyN", 78, 2));
++    await send(press("ArrowLeft", "ArrowLeft", 37, 1));
++    await tab.waitForTimeout(500);
++    expect(await pages()).toEqual(before);
++    expect(await within(tab.title(), "The page")).toBe("Keys");
++    // The page heard each of them: they went to it, not past it.
++    expect(await keysSeen(tab)).toEqual(["t", "n", "ArrowLeft"]);
++    await stop();
++  });
++});
+diff -ruN a/tests/screencast.test.ts b/tests/screencast.test.ts
+--- a/tests/screencast.test.ts	2026-10-28 00:00:00
++++ b/tests/screencast.test.ts	2026-10-28 00:00:00
+@@ -104,6 +104,23 @@
+     // A form field ignores a bare Enter or Backspace without this, which is why it is sent at all.
+     const params = await dispatched(typed("down", "Enter", "Enter", 13));
+     expect(params.windowsVirtualKeyCode).toBe(13);
+-    expect(params.nativeVirtualKeyCode).toBe(13);
++  });
++
++  // OpenDuet patch 0006: from CopilotKit/OpenBot's agent-computer 0.2.0 (tests/screencast.test.ts, MIT).
++  test("no key names a native key code, so none reaches the browser's own shortcuts", async () => {
++    // With one, Chrome passes a key the page did not take on to the browser, and on macOS reads the code as the Mac's
++    // own key number: ArrowLeft's 37 is the Mac's L, Home's 36 its Return. A person's ArrowLeft reached the page as an
++    // unnamed key, opened chrome://settings/help and left the browser spinning (screencast.ts says how it was measured).
++    for (const [key, code, keyCode] of [
++      ["ArrowLeft", "ArrowLeft", 37],
++      ["Home", "Home", 36],
++      ["Enter", "Enter", 13],
++      ["a", "KeyA", 65],
++    ] as const) {
++      for (const event of ["down", "up"] as const) {
++        const params = await dispatched(typed(event, key, code, keyCode));
++        expect(params).not.toHaveProperty("nativeVirtualKeyCode");
++      }
++    }
+   });
+ });
+diff -ruN a/tests/window-cast.test.ts b/tests/window-cast.test.ts
+--- a/tests/window-cast.test.ts	2026-10-28 00:00:00
++++ b/tests/window-cast.test.ts	2026-10-28 00:00:00
+@@ -61,7 +61,8 @@
+   });
+ });
+ 
+-const SCREEN = screenFromEnv({});
++// The portrait screen these numbers were measured on (landscape is the default since patch 0006).
++const SCREEN = screenFromEnv({ COMPUTER_BROWSER_SCREEN: "portrait" });
+ 
+ describe("a person's input as xdotool commands", () => {
+   test("a press moves, then presses, and says where it landed", () => {

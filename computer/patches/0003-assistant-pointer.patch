@@ -1,0 +1,126 @@
+OpenDuet patch for CopilotKit/OpenBot agent-computer (MIT) at da9a3caf5784074baa779110dd7e9d1338c8871b.
+Window mode: before the assistant's click the X pointer glides to the element, so the live screen shows it.
+Applied in /app by computer/Dockerfile: patch -p1 --forward --fuzz=0. Regenerated with diff -ruN.
+
+diff -ruN a/src/assistant-pointer.ts b/src/assistant-pointer.ts
+--- a/src/assistant-pointer.ts	1970-01-01 08:00:00
++++ b/src/assistant-pointer.ts	2026-10-28 00:00:00
+@@ -0,0 +1,42 @@
++/**
++ * OpenDuet patch (computer/patches/0003): the assistant's pointer, visible on the live screen.
++ *
++ * The Bot clicks through Playwright, which goes over CDP and never moves the X pointer, so in window
++ * mode a person watching saw buttons press themselves. Before a click, the X pointer glides to the
++ * middle of the element (the page point plus the content area's place on the X screen) and the
++ * click then lands where it stopped. Best effort and bounded: a pointer that cannot be shown never
++ * holds up or fails the click.
++ */
++import type { Locator, Page } from "playwright";
++import type { ScreenSpec } from "./screen";
++import { pageToScreen, readWindowMetrics, within } from "./window-geometry";
++import { glideCommands, type XInput } from "./x-input";
++
++const POINTER_BUDGET_MS = 1_500;
++
++export async function showPointerAt(
++  input: XInput,
++  page: Page,
++  element: Locator,
++  screen: ScreenSpec,
++  budgetMs = POINTER_BUDGET_MS,
++): Promise<void> {
++  await within(
++    (async () => {
++      // Playwright scrolls into view before it clicks; doing it first means the box is where the
++      // click will be.
++      await element.scrollIntoViewIfNeeded({ timeout: 1_000 });
++      const box = await element.boundingBox({ timeout: 500 });
++      if (!box) return;
++      const metrics = await readWindowMetrics(page, 300);
++      if (!metrics) return;
++      const to = pageToScreen(metrics, {
++        x: box.x + box.width / 2,
++        y: box.y + box.height / 2,
++      });
++      const from = (await input.run([])) ?? to;
++      await input.run(glideCommands(from, to, screen));
++    })(),
++    budgetMs,
++  );
++}
+diff -ruN a/src/index.ts b/src/index.ts
+--- a/src/index.ts	2026-10-28 00:00:00
++++ b/src/index.ts	2026-10-28 00:00:00
+@@ -18,6 +18,7 @@
+ } from "./authorisation";
+ import { isPlainBotId } from "./bot-id";
+ import { browserRuntimeFromEnv } from "./browser-runtime";
++import { showPointerAt } from "./assistant-pointer";
+ import { detectChallenge } from "./challenge";
+ import {
+   ControlError,
+@@ -1630,7 +1631,10 @@
+ 
+   if (action === "/click") {
+     if (!ref) throw new Error("A click needs the ref of an element to click.");
+-    await (await resolveRef(session, target, ref, expected)).click(acting);
++    const element = await resolveRef(session, target, ref, expected);
++    // OpenDuet patch 0003: in window mode the X pointer goes there first, so the click is seen.
++    if (X_INPUT) await showPointerAt(X_INPUT, target, element, SCREEN);
++    await element.click(acting);
+     return { action: "click", ref, url: target.url() };
+   }
+ 
+diff -ruN a/tests/assistant-pointer.test.ts b/tests/assistant-pointer.test.ts
+--- a/tests/assistant-pointer.test.ts	1970-01-01 08:00:00
++++ b/tests/assistant-pointer.test.ts	2026-10-28 00:00:00
+@@ -0,0 +1,49 @@
++// OpenDuet patch 0003: the assistant's pointer glides to the element it is about to click.
++import { describe, expect, test } from "bun:test";
++import { showPointerAt } from "../src/assistant-pointer";
++import { screenFromEnv } from "../src/screen";
++import type { XInput } from "../src/x-input";
++
++const metrics = { screenX: 0, screenY: 0, outerWidth: 500, outerHeight: 932, innerWidth: 500, innerHeight: 845, devicePixelRatio: 1.72 };
++
++function fakes(box: { x: number; y: number; width: number; height: number } | null) {
++  const runs: string[][] = [];
++  const input: XInput = {
++    run: async (commands) => {
++      runs.push(commands);
++      return { x: 10, y: 10 };
++    },
++    windowName: async () => undefined,
++    paste: async () => {},
++    stop: () => {},
++  };
++  const page = { evaluate: async () => metrics } as never;
++  const element = { scrollIntoViewIfNeeded: async () => {}, boundingBox: async () => box } as never;
++  return { runs, input, page, element };
++}
++
++describe("the assistant's pointer", () => {
++  test("glides from where the pointer is to the middle of the element on the X screen", async () => {
++    const f = fakes({ x: 90, y: 20, width: 20, height: 10 });
++    await showPointerAt(f.input, f.page, f.element, screenFromEnv({}));
++    expect(f.runs[0]).toEqual([]);
++    // (100, 25) CSS px -> 172, 150 + 43 = 193
++    expect(f.runs[1]!.at(-1)).toBe("mousemove 172 193");
++  });
++
++  test("does nothing for an element with no box, and never throws", async () => {
++    const f = fakes(null);
++    await showPointerAt(f.input, f.page, f.element, screenFromEnv({}));
++    expect(f.runs).toEqual([]);
++    const broken = { scrollIntoViewIfNeeded: async () => { throw new Error("detached"); } } as never;
++    await showPointerAt(f.input, f.page, broken, screenFromEnv({}));
++  });
++
++  test("is bounded: a page that never answers does not hold the click", async () => {
++    const f = fakes({ x: 0, y: 0, width: 1, height: 1 });
++    const stuck = { scrollIntoViewIfNeeded: () => new Promise(() => {}) } as never;
++    const started = Date.now();
++    await showPointerAt(f.input, f.page, stuck, screenFromEnv({}), 50);
++    expect(Date.now() - started).toBeLessThan(1_000);
++  });
++});

@@ -1,0 +1,37 @@
+{
+  "ArtifactList": { "artifacts": [
+    { "id": "art_1", "channelId": "ch_main", "type": "dashboard", "title": "Launch metrics", "status": "ready", "sourceCount": 2,
+      "refreshSchedule": { "cadence": "daily", "hour": 5, "minute": 30 }, "pinnedToTabBar": true, "createdAt": "2026-10-25T09:00:00.000Z", "updatedAt": "2026-10-25T09:10:00.000Z" },
+    { "id": "art_3", "channelId": "ch_main", "type": "docs", "title": "Monday brief", "status": "ready", "sourceCount": 3,
+      "refreshSchedule": null, "pinnedToTabBar": false, "createdAt": "2026-10-20T08:00:00.000Z", "updatedAt": "2026-10-20T08:02:00.000Z" },
+    { "id": "art_5", "channelId": "ch_main", "type": "slides", "title": "Offsite deck", "status": "ready", "sourceCount": 1,
+      "refreshSchedule": null, "pinnedToTabBar": false, "pinned": true, "createdAt": "2026-10-18T10:00:00.000Z", "updatedAt": "2026-10-18T10:05:00.000Z" }
+  ] },
+  "ArtifactDetail": { "id": "art_1", "channelId": "ch_main", "type": "dashboard", "title": "Launch metrics", "status": "ready", "sourceCount": 2,
+    "refreshSchedule": { "cadence": "daily", "hour": 5, "minute": 30 }, "pinnedToTabBar": true, "createdAt": "2026-10-25T09:00:00.000Z", "updatedAt": "2026-10-25T09:10:00.000Z",
+    "prompt": "A dashboard of signups and conversion for the launch",
+    "sources": [{ "name": "Signups sheet", "app": "Google Sheets", "detail": "Launch tracker, tab Daily" }, { "name": "Stripe payments", "app": "Stripe", "detail": "Last 30 days" }] },
+  "CreateArtifactRequest": { "type": "web_page", "prompt": "A booking page for my bike shop", "channelId": "ch_main" },
+  "EditArtifactRequest": { "prompt": "Make the headline shorter" },
+  "UpdateArtifactRequest": [{ "pinnedToTabBar": false }, { "title": "Launch KPIs" }, { "refreshSchedule": { "cadence": "daily", "hour": 5, "minute": 30 } }, { "refreshSchedule": null }, { "pinned": true }, { "pinned": false }],
+  "ArtifactResponse": { "artifact": { "id": "art_4", "channelId": "ch_main", "type": "web_page", "title": "Bike shop booking page", "status": "building", "sourceCount": 0,
+    "refreshSchedule": null, "pinnedToTabBar": false, "createdAt": "2026-10-25T12:00:00.000Z", "updatedAt": "2026-10-25T12:00:00.000Z" } },
+  "ComputerState": [
+    { "available": true, "browser": "off", "controller": "assistant", "url": null, "domain": null, "blocked": null },
+    { "available": true, "browser": "ready", "controller": "assistant", "url": "https://events.example.com/", "domain": "events.example.com", "blocked": "human_check" }
+  ],
+  "ComputerControlResponse": { "computer": { "available": true, "browser": "ready", "controller": "user", "url": "https://events.example.com/", "domain": "events.example.com", "blocked": null } },
+  "SignInCardRequest": { "email": "alex@example.com", "password": "test-password-only" },
+  "SignInCardResponse": { "requestId": "sir_1", "state": "sent" },
+  "ComputerClientMessage": [
+    { "type": "tap", "x": 0.42, "y": 0.31 },
+    { "type": "drag", "from": { "x": 0.5, "y": 0.8 }, "to": { "x": 0.5, "y": 0.2 } },
+    { "type": "scroll", "dx": 0, "dy": 480 },
+    { "type": "text", "text": "Alex Kim" },
+    { "type": "key", "key": "Enter" }
+  ],
+  "ComputerServerMessage": [
+    { "type": "state", "computer": { "available": true, "browser": "ready", "controller": "assistant", "url": "https://example.com/", "domain": "example.com", "blocked": null } },
+    { "type": "frame_meta", "width": 1280, "height": 800 }
+  ]
+}

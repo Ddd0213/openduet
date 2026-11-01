@@ -1,0 +1,137 @@
+{
+  "SignInCodeRequest": { "code": "482913" },
+  "SignInCardResponse": [
+    { "requestId": "sir_2", "state": "sent", "step": "code", "reason": null, "outcome": null, "computer": null },
+    { "requestId": "sir_2", "state": "failed", "step": "code", "reason": { "key": "signin.code_rejected" }, "outcome": null, "computer": null },
+    { "requestId": "sir_3", "state": "failed", "step": "credentials", "reason": { "key": "signin.moved" }, "outcome": null, "computer": null },
+    {
+      "requestId": "sir_4", "state": "expired", "step": "credentials", "reason": null, "outcome": "taken_over",
+      "computer": { "available": true, "browser": "ready", "controller": "user", "url": "https://shop.example.com/login", "domain": "shop.example.com", "blocked": null }
+    },
+    { "requestId": "sir_5", "state": "expired", "step": "credentials", "reason": null, "outcome": "dismissed", "computer": null }
+  ],
+  "BrowserAction": [
+    { "site": "shop.example.com", "button": "Place your order", "category": "purchase", "via": "click" },
+    { "site": "forum.example.org", "button": "发布", "category": "send", "via": "click" }
+  ],
+  "ApprovalAlways": [
+    { "scope": "recipient", "value": "sam@example.com", "category": null },
+    { "scope": "site", "value": "forum.example.org", "category": "send" }
+  ],
+  "ComputerControlResponse": {
+    "computer": { "available": true, "browser": "off", "controller": "assistant", "url": null, "domain": null, "blocked": null }
+  },
+  "Me": [
+    {
+      "id": "usr_1", "username": "alex", "name": "Alex Kim", "firstName": "Alex", "email": "alex@example.com",
+      "timezone": "America/Los_Angeles", "language": "en", "briefTime": { "hour": 8, "minute": 19 },
+      "checkinMinute": 49, "weekendsOn": false, "onboardedAt": "2026-10-25T08:05:00.000Z", "mainChannelId": "ch_main",
+      "features": {
+        "connectors": true, "webSearch": true, "push": null, "computer": true, "models": true, "voice": false,
+        "computerMode": "headed", "computerIdleMinutes": 30
+      },
+      "createdAt": "2026-10-25T08:00:00.000Z"
+    },
+    {
+      "id": "usr_2", "username": "lin", "name": "林晓", "firstName": "林晓", "email": null,
+      "timezone": "Asia/Shanghai", "language": "zh-Hans", "briefTime": { "hour": 7, "minute": 43 },
+      "checkinMinute": 13, "weekendsOn": true, "onboardedAt": null, "mainChannelId": "ch_main_2",
+      "features": {
+        "connectors": false, "webSearch": false, "push": null, "computer": false, "models": true, "voice": false,
+        "computerMode": "off", "computerIdleMinutes": null
+      },
+      "createdAt": "2026-10-28T08:00:00.000Z"
+    }
+  ],
+  "ConnectorDetail": {
+    "connector": {
+      "toolkit": "gmail", "name": "Gmail", "description": "Read, draft and send email.", "logoUrl": "/api/connectors/gmail/logo",
+      "category": "mail", "accounts": [{ "id": "ca_1", "label": "alex@example.com", "status": "active", "connectedAt": "2026-10-25T08:10:00.000Z" }]
+    },
+    "tools": [
+      { "slug": "GMAIL_FETCH_EMAILS", "name": "Fetch emails", "description": "List recent messages.", "access": "read", "mode": "always", "common": true, "alwaysAllowed": true, "alwaysBlocked": null },
+      { "slug": "GMAIL_SEND_EMAIL", "name": "Send email", "description": "Send a message.", "access": "write", "mode": "ask", "common": true, "alwaysAllowed": false, "alwaysBlocked": "per_recipient" },
+      { "slug": "GMAIL_UPDATE_PASSWORD_SETTINGS", "name": "Update security settings", "description": "Change account security settings.", "access": "write", "mode": "ask", "common": false, "alwaysAllowed": false, "alwaysBlocked": "floor" }
+    ]
+  },
+  "MessagePage": {
+    "messages": [
+      {
+        "id": "msg_signin_code", "channelId": "ch_main", "taskId": "task_1", "role": "assistant", "kind": "sign_in", "text": "",
+        "status": "sent", "clientId": null, "reactions": [], "stopped": false, "callId": null,
+        "payload": { "requestId": "sir_2", "domain": "shop.example.com", "state": "pending", "step": "code", "reason": null, "outcome": null },
+        "createdAt": "2026-11-10T08:51:30.000Z", "updatedAt": "2026-11-10T08:52:10.000Z"
+      },
+      {
+        "id": "msg_signin_taken", "channelId": "ch_main", "taskId": "task_1", "role": "assistant", "kind": "sign_in", "text": "",
+        "status": "sent", "clientId": null, "reactions": [], "stopped": false, "callId": null,
+        "payload": { "requestId": "sir_4", "domain": "shop.example.com", "state": "expired", "step": "credentials", "reason": null, "outcome": "taken_over" },
+        "createdAt": "2026-11-10T08:55:00.000Z", "updatedAt": "2026-11-10T08:55:20.000Z"
+      },
+      {
+        "id": "msg_browser_approval", "channelId": "ch_main", "taskId": "task_1", "role": "assistant", "kind": "approval", "text": "",
+        "status": "sent", "clientId": null, "reactions": [], "stopped": false, "callId": null,
+        "payload": {
+          "approval": {
+            "id": "apr_9", "kind": "action", "status": "pending", "version": 1, "expiresAt": null, "taskId": "task_1", "messageId": "msg_browser_approval",
+            "preview": {
+              "kind": "action", "app": "Claude's computer", "toolName": "Click in the browser",
+              "rows": [{ "label": "Site", "value": "forum.example.org" }, { "label": "Button", "value": "发布" }],
+              "browser": { "site": "forum.example.org", "button": "发布", "category": "send", "via": "click" }
+            },
+            "result": null, "changedFields": [],
+            "why": { "key": "approval.why_send" },
+            "always": { "scope": "site", "value": "forum.example.org", "category": "send" },
+            "updatedAt": "2026-11-10T09:00:00.000Z"
+          }
+        },
+        "createdAt": "2026-11-10T09:00:00.000Z", "updatedAt": "2026-11-10T09:00:00.000Z"
+      },
+      {
+        "id": "msg_purchase_approval", "channelId": "ch_main", "taskId": "task_1", "role": "assistant", "kind": "approval", "text": "",
+        "status": "sent", "clientId": null, "reactions": [], "stopped": false, "callId": null,
+        "payload": {
+          "approval": {
+            "id": "apr_10", "kind": "action", "status": "pending", "version": 1, "expiresAt": null, "taskId": "task_1", "messageId": "msg_purchase_approval",
+            "preview": {
+              "kind": "action", "app": "Claude's computer", "toolName": "Click in the browser",
+              "rows": [{ "label": "Site", "value": "shop.example.com" }, { "label": "Button", "value": "Place your order" }],
+              "browser": { "site": "shop.example.com", "button": "Place your order", "category": "purchase", "via": "click" }
+            },
+            "result": null, "changedFields": [],
+            "why": { "key": "approval.why_purchase" },
+            "always": null,
+            "updatedAt": "2026-11-10T09:02:00.000Z"
+          }
+        },
+        "createdAt": "2026-11-10T09:02:00.000Z", "updatedAt": "2026-11-10T09:02:00.000Z"
+      },
+      {
+        "id": "msg_email_approval", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "approval", "text": "",
+        "status": "sent", "clientId": null, "reactions": [], "stopped": false, "callId": null,
+        "payload": {
+          "approval": {
+            "id": "apr_11", "kind": "email", "status": "pending", "version": 1, "expiresAt": null, "taskId": null, "messageId": "msg_email_approval",
+            "preview": { "kind": "email", "app": "Gmail", "to": ["sam@example.com"], "cc": [], "subject": "Launch notes", "body": "Hi Sam,\n\nNotes attached.\n\nAlex", "attachments": [] },
+            "result": null, "changedFields": [],
+            "why": null,
+            "always": { "scope": "recipient", "value": "sam@example.com", "category": null },
+            "updatedAt": "2026-11-10T09:05:00.000Z"
+          }
+        },
+        "createdAt": "2026-11-10T09:05:00.000Z", "updatedAt": "2026-11-10T09:05:00.000Z"
+      },
+      {
+        "id": "msg_auto_handback", "channelId": "ch_main", "taskId": null, "role": "system", "kind": "system", "text": "",
+        "status": "sent", "clientId": null, "reactions": [], "stopped": false, "callId": null,
+        "payload": { "phrase": { "key": "computer.auto_handback", "params": { "minutes": { "type": "number", "value": 10 } } } },
+        "createdAt": "2026-11-10T09:20:00.000Z", "updatedAt": "2026-11-10T09:20:00.000Z"
+      }
+    ],
+    "hasMore": false
+  },
+  "ApprovalDecisionRequest": [
+    { "version": 1, "always": true },
+    { "version": 2 }
+  ]
+}

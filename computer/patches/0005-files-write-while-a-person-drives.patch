@@ -1,0 +1,87 @@
+OpenDuet patch for CopilotKit/OpenBot agent-computer (MIT) at da9a3caf5784074baa779110dd7e9d1338c8871b.
+/files/write no longer waits for a person to hand the browser back (it reaches only /workspace); /exec still does.
+Applied in /app by computer/Dockerfile: patch -p1 --forward --fuzz=0. Regenerated with diff -ruN.
+
+diff -ruN a/src/authorisation.ts b/src/authorisation.ts
+--- a/src/authorisation.ts	2026-10-28 00:00:00
++++ b/src/authorisation.ts	2026-10-28 00:00:00
+@@ -64,6 +64,11 @@
+  * Reading is not acting. `/files/read` and `/files/list` stay open so a Bot that has been stopped can
+  * still read its own notes and explain what it was doing, which is the answer the person handing the
+  * wheel back usually wants.
++ *
++ * OpenDuet patch 0005: `/files/write` is not acting either. It writes inside /workspace through the
++ * same confinement as reading and reaches neither the browser nor its profile (/profiles), so a Make
++ * build saving its page no longer waits for a person who took the browser and forgot to hand it
++ * back. `/exec` stays on the list: a shell can reach the browser's processes and profile.
+  */
+ const ACTING_PATHS = new Set([
+   "/navigate",
+@@ -72,7 +77,6 @@
+   "/key",
+   "/scroll",
+   "/exec",
+-  "/files/write",
+   // Typing a person's login into the page. Refused while they hold the wheel, like any other typing.
+   "/sign-in/fill",
+   "/sign-in/code",
+diff -ruN a/tests/authorisation.test.ts b/tests/authorisation.test.ts
+--- a/tests/authorisation.test.ts	2026-10-28 00:00:00
++++ b/tests/authorisation.test.ts	2026-10-28 00:00:00
+@@ -111,7 +111,7 @@
+  * wheel back can still say what it was doing.
+  */
+ describe("what the wheel stops while a person is driving", () => {
+-  test("every path that acts on the computer, the shell and a workspace write included", () => {
++  test("every path that acts on the computer, the shell included", () => {
+     for (const path of [
+       "/navigate",
+       "/click",
+@@ -119,7 +119,6 @@
+       "/key",
+       "/scroll",
+       "/exec",
+-      "/files/write",
+       "/sign-in/fill",
+       "/sign-in/code",
+     ]) {
+@@ -131,6 +130,8 @@
+     for (const path of [
+       "/files/read",
+       "/files/list",
++      // OpenDuet patch 0005: a workspace write reaches neither the browser nor its profile.
++      "/files/write",
+       "/snapshot",
+       "/screenshot",
+       "/health",
+diff -ruN a/tests/control-http.test.ts b/tests/control-http.test.ts
+--- a/tests/control-http.test.ts	2026-10-28 00:00:00
++++ b/tests/control-http.test.ts	2026-10-28 00:00:00
+@@ -105,9 +105,10 @@
+       expect(waiting.holder).toBe("bot");
+       const requestId = waiting.request!.id;
+       const taking = post("/control/take", { requestId });
+-      const refused = await post("/files/write", {
+-        path: "too-late",
+-        contents: "wrong",
++      // OpenDuet patch 0005: a workspace write is no longer refused; the shell still is.
++      const refused = await post("/exec", {
++        command: "printf wrong > too-late",
++        timeoutMs: 3000,
+       });
+       expect(refused.status).toBe(409);
+       expect(await refused.json()).toMatchObject({
+@@ -117,6 +118,13 @@
+       expect((await control(requestId)).holder).toBe("bot");
+       expect((await running).status).toBe(200);
+       expect((await (await taking).json()).holder).toBe("human");
++      // OpenDuet patch 0005: while the person drives, a workspace write goes through and the shell
++      // is still refused.
++      expect(
++        (await post("/files/write", { path: "during", contents: "saved" })).status,
++      ).toBe(200);
++      expect(await Bun.file(join(root, "workspace", "during")).text()).toBe("saved");
++      expect((await post("/exec", { command: "true", timeoutMs: 3000 })).status).toBe(409);
+       expect(
+         (await post("/control/release", { requestId: "wrong" })).status,
+       ).toBe(409);

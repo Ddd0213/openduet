@@ -1,0 +1,423 @@
+{
+  "ArtifactVersionList": [
+    {
+      "versions": [
+        {
+          "id": "av_4",
+          "artifactId": "art_brief",
+          "by": "user",
+          "reason": "restore",
+          "prompt": null,
+          "createdAt": "2026-11-03T09:12:00.000Z"
+        },
+        {
+          "id": "av_3",
+          "artifactId": "art_brief",
+          "by": "assistant",
+          "reason": "edit",
+          "prompt": "Make the header blue and add the opening hours",
+          "createdAt": "2026-11-03T09:05:00.000Z"
+        },
+        {
+          "id": "av_2",
+          "artifactId": "art_brief",
+          "by": "assistant",
+          "reason": "refresh",
+          "prompt": null,
+          "createdAt": "2026-11-03T06:00:00.000Z"
+        },
+        {
+          "id": "av_1",
+          "artifactId": "art_brief",
+          "by": "user",
+          "reason": "create",
+          "prompt": "A one-page brief for the Q4 offsite",
+          "createdAt": "2026-11-02T08:01:30.000Z"
+        }
+      ]
+    },
+    {
+      "versions": []
+    }
+  ],
+  "RestoreArtifactRequest": [
+    {
+      "versionId": "av_2"
+    }
+  ],
+  "ArtifactResponse": [
+    {
+      "artifact": {
+        "id": "art_brief",
+        "channelId": "ch_main",
+        "type": "docs",
+        "title": "Q4 offsite brief",
+        "status": "ready",
+        "sourceCount": 2,
+        "refreshSchedule": null,
+        "pinnedToTabBar": false,
+        "pinned": false,
+        "createdAt": "2026-11-02T08:00:00.000Z",
+        "updatedAt": "2026-11-03T09:12:00.000Z",
+        "lastOpenedAt": "2026-11-03T09:11:40.000Z"
+      }
+    }
+  ],
+  "ArtifactList": [
+    {
+      "artifacts": [
+        {
+          "id": "art_new",
+          "channelId": "ch_main",
+          "type": "dashboard",
+          "title": "Weekly steps",
+          "status": "ready",
+          "sourceCount": 2,
+          "refreshSchedule": null,
+          "pinnedToTabBar": false,
+          "pinned": false,
+          "createdAt": "2026-11-02T08:00:00.000Z",
+          "updatedAt": "2026-11-03T08:58:00.000Z",
+          "lastOpenedAt": null
+        },
+        {
+          "id": "art_brief",
+          "channelId": "ch_main",
+          "type": "docs",
+          "title": "Q4 offsite brief",
+          "status": "ready",
+          "sourceCount": 2,
+          "refreshSchedule": null,
+          "pinnedToTabBar": false,
+          "pinned": false,
+          "createdAt": "2026-11-02T08:00:00.000Z",
+          "updatedAt": "2026-11-03T09:12:00.000Z",
+          "lastOpenedAt": "2026-11-03T09:11:40.000Z"
+        },
+        {
+          "id": "art_old",
+          "channelId": "ch_main",
+          "type": "web_page",
+          "title": "Bike shop booking page",
+          "status": "ready",
+          "sourceCount": 2,
+          "refreshSchedule": null,
+          "pinnedToTabBar": false,
+          "pinned": false,
+          "createdAt": "2026-11-02T08:00:00.000Z",
+          "updatedAt": "2026-10-25T12:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "LineChartBlock": [
+    {
+      "type": "line_chart",
+      "labels": [
+        "Mon",
+        "Tue",
+        "Wed",
+        "Thu",
+        "Fri",
+        "Sat",
+        "Sun"
+      ],
+      "series": [
+        {
+          "name": "Steps",
+          "values": [
+            6200,
+            8100,
+            7400,
+            9900,
+            5300,
+            12040,
+            10100
+          ]
+        }
+      ],
+      "unit": "steps"
+    },
+    {
+      "type": "line_chart",
+      "labels": [
+        "W40",
+        "W41",
+        "W42",
+        "W43"
+      ],
+      "series": [
+        {
+          "name": "Revenue",
+          "values": [
+            4200,
+            4650,
+            null,
+            5100
+          ]
+        },
+        {
+          "name": "Costs",
+          "values": [
+            3100,
+            3000,
+            3350,
+            3200
+          ]
+        }
+      ],
+      "unit": "$"
+    }
+  ],
+  "MessagePage": [
+    {
+      "messages": [
+        {
+          "id": "msg_steps",
+          "channelId": "ch_main",
+          "taskId": null,
+          "role": "assistant",
+          "kind": "card",
+          "text": "Here's your week:",
+          "status": "sent",
+          "clientId": null,
+          "reactions": [],
+          "stopped": false,
+          "payload": {
+            "icon": "chart",
+            "tint": "green",
+            "title": "Your week in steps",
+            "subtitle": "Oct 27 – Nov 2",
+            "blocks": [
+              {
+                "type": "line_chart",
+                "labels": [
+                  "Mon",
+                  "Tue",
+                  "Wed",
+                  "Thu",
+                  "Fri",
+                  "Sat",
+                  "Sun"
+                ],
+                "series": [
+                  {
+                    "name": "Steps",
+                    "values": [
+                      6200,
+                      8100,
+                      7400,
+                      9900,
+                      5300,
+                      12040,
+                      10100
+                    ]
+                  }
+                ],
+                "unit": "steps"
+              },
+              {
+                "type": "text",
+                "text": "Saturday's hike was your best day."
+              }
+            ],
+            "actions": []
+          },
+          "createdAt": "2026-11-03T09:00:00.000Z",
+          "updatedAt": "2026-11-03T09:00:00.000Z"
+        },
+        {
+          "id": "msg_money",
+          "channelId": "ch_main",
+          "taskId": null,
+          "role": "assistant",
+          "kind": "card",
+          "text": "",
+          "status": "sent",
+          "clientId": null,
+          "reactions": [],
+          "stopped": false,
+          "payload": {
+            "icon": "money",
+            "tint": "purple",
+            "title": "Shop revenue vs costs",
+            "subtitle": null,
+            "blocks": [
+              {
+                "type": "line_chart",
+                "labels": [
+                  "W40",
+                  "W41",
+                  "W42",
+                  "W43"
+                ],
+                "series": [
+                  {
+                    "name": "Revenue",
+                    "values": [
+                      4200,
+                      4650,
+                      null,
+                      5100
+                    ]
+                  },
+                  {
+                    "name": "Costs",
+                    "values": [
+                      3100,
+                      3000,
+                      3350,
+                      3200
+                    ]
+                  }
+                ],
+                "unit": "$"
+              }
+            ],
+            "actions": []
+          },
+          "createdAt": "2026-11-03T09:01:00.000Z",
+          "updatedAt": "2026-11-03T09:01:00.000Z"
+        },
+        {
+          "id": "msg_pack",
+          "channelId": "ch_main",
+          "taskId": null,
+          "role": "assistant",
+          "kind": "card",
+          "text": "",
+          "status": "sent",
+          "clientId": null,
+          "reactions": [],
+          "stopped": false,
+          "payload": {
+            "icon": "checklist",
+            "tint": "blue",
+            "title": "Packing for Lisbon",
+            "subtitle": "Flight Friday 7:40 AM",
+            "blocks": [
+              {
+                "type": "checklist",
+                "items": [
+                  {
+                    "text": "Passport",
+                    "done": true,
+                    "id": "c1"
+                  },
+                  {
+                    "text": "Charger and adapter",
+                    "done": false,
+                    "id": "c2"
+                  },
+                  {
+                    "text": "Printed hotel booking",
+                    "done": false,
+                    "id": "c3"
+                  }
+                ]
+              }
+            ],
+            "actions": []
+          },
+          "createdAt": "2026-11-03T09:00:00.000Z",
+          "updatedAt": "2026-11-03T09:00:00.000Z"
+        },
+        {
+          "id": "msg_status",
+          "channelId": "ch_main",
+          "taskId": null,
+          "role": "assistant",
+          "kind": "card",
+          "text": "",
+          "status": "sent",
+          "clientId": null,
+          "reactions": [],
+          "stopped": false,
+          "payload": {
+            "icon": "checklist",
+            "tint": "grey",
+            "title": "Launch status",
+            "subtitle": null,
+            "blocks": [
+              {
+                "type": "checklist",
+                "items": [
+                  {
+                    "text": "Final copy",
+                    "done": true
+                  },
+                  {
+                    "text": "App Store screenshots",
+                    "done": false
+                  }
+                ]
+              }
+            ],
+            "actions": []
+          },
+          "createdAt": "2026-11-03T09:02:00.000Z",
+          "updatedAt": "2026-11-03T09:02:00.000Z"
+        }
+      ],
+      "hasMore": false,
+      "activeRun": null
+    }
+  ],
+  "MessageActionRequest": [
+    {
+      "action": "check",
+      "itemId": "c2"
+    },
+    {
+      "action": "uncheck",
+      "itemId": "c1"
+    }
+  ],
+  "MessageActionResponse": [
+    {
+      "message": {
+        "id": "msg_pack",
+        "channelId": "ch_main",
+        "taskId": null,
+        "role": "assistant",
+        "kind": "card",
+        "text": "",
+        "status": "sent",
+        "clientId": null,
+        "reactions": [],
+        "stopped": false,
+        "payload": {
+          "icon": "checklist",
+          "tint": "blue",
+          "title": "Packing for Lisbon",
+          "subtitle": "Flight Friday 7:40 AM",
+          "blocks": [
+            {
+              "type": "checklist",
+              "items": [
+                {
+                  "text": "Passport",
+                  "done": true,
+                  "id": "c1"
+                },
+                {
+                  "text": "Charger and adapter",
+                  "done": true,
+                  "id": "c2"
+                },
+                {
+                  "text": "Printed hotel booking",
+                  "done": false,
+                  "id": "c3"
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        "createdAt": "2026-11-03T09:00:00.000Z",
+        "updatedAt": "2026-11-03T09:20:00.000Z"
+      }
+    }
+  ]
+}

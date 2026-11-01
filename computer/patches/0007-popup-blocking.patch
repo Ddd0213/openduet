@@ -1,0 +1,223 @@
+OpenDuet patch for CopilotKit/OpenBot agent-computer (MIT) at da9a3caf5784074baa779110dd7e9d1338c8871b.
+Chromium's popup blocker back on (Playwright's --disable-popup-blocking added to ignoreDefaultArgs): a window opens from a real click, not from a page's own script, so pages cannot open tabs past the app's cap.
+Applied in /app by computer/Dockerfile: patch -p1 --forward --fuzz=0. Regenerated with diff -ruN.
+
+diff -ruN a/src/profiles.ts b/src/profiles.ts
+--- a/src/profiles.ts	2026-10-28 00:00:00
++++ b/src/profiles.ts	2026-10-28 00:00:00
+@@ -103,6 +103,9 @@
+  *
+  * Said out loud at start-up either way. An operator should not have to read this file to find out
+  * whether the browser rendering the open internet is sandboxed.
++ *
++ * OpenDuet patch 0007: OpenDuet's compose.yml turns it on, with computer/seccomp-chrome.json
++ * (Docker's default profile plus user, pid and net namespaces and chroot) and no added capability.
+  */
+ const BROWSER_RUNTIME = browserRuntimeFromEnv(process.env);
+ const LOCAL_CHROME = BROWSER_RUNTIME.backend === "local-chrome";
+@@ -531,7 +534,12 @@
+           // "controlled by automated software" banner. Dropped for the same reason as the flag above:
+           // a person who takes the wheel should be able to sign in. Named explicitly so the sandbox
+           // default args Playwright still supplies are otherwise left intact.
+-          ignoreDefaultArgs: ["--enable-automation"],
++          //
++          // OpenDuet patch 0007: `--disable-popup-blocking` too, so Chromium's own popup blocker is
++          // back. Without it a page could call `window.open` in a loop and every window was adopted
++          // below (`context.on("page")`), outside the app's 20-tab cap. With it a window still opens
++          // from a real click, the assistant's or the person's, which is how a sign-in popup is opened.
++          ignoreDefaultArgs: ["--enable-automation", "--disable-popup-blocking"],
+           // Playwright adds `--no-sandbox` on its own unless told otherwise, so leaving this out
+           // means the flag above decides nothing and a deployment that asked for the sandbox does
+           // not get one. Verified by reading the launched process arguments, not by trusting either.
+diff -ruN a/tests/popup-blocking-browser.test.ts b/tests/popup-blocking-browser.test.ts
+--- a/tests/popup-blocking-browser.test.ts	1970-01-01 08:00:00
++++ b/tests/popup-blocking-browser.test.ts	2026-10-28 00:00:00
+@@ -0,0 +1,172 @@
++import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++
++/**
++ * OpenDuet patch 0007: Chromium's popup blocker is on again, against a real Chromium launched
++ * through the real profile path.
++ *
++ * Playwright starts Chromium with `--disable-popup-blocking`, so any page could open windows with
++ * no click at all, and every one of them was adopted as a tab outside the app's 20-tab cap. The
++ * patch drops that switch. What has to hold:
++ * - a real click (the assistant's goes through CDP input, the person's too) still opens a sign-in window,
++ *   also when the page waits a moment first, as an OAuth library that fetches before opening does;
++ * - the window is one of the Bot's pages, so the tab list and the app's cap count it;
++ * - a page that opens windows by itself gets none, and one click opens one window, not ten.
++ *
++ * Not `page.evaluate` to open windows: Playwright runs evaluated code as a user gesture, which is
++ * not what a page's own script gets.
++ *
++ *   OPENBOT_COMPUTER_BROWSER=1 bun test tests/popup-blocking-browser.test.ts
++ */
++const asked = process.env.OPENBOT_COMPUTER_BROWSER === "1";
++const BOT = "popup-bot";
++
++type Profiles = ReturnType<typeof import("../src/profiles")["createProfiles"]>;
++let profiles: Profiles;
++let root: string;
++let site: ReturnType<typeof Bun.serve>;
++
++const page = (title: string, body: string) =>
++  new Response(`<!doctype html><title>${title}</title><body>${body}</body>`, {
++    headers: { "content-type": "text/html; charset=utf-8" },
++  });
++
++beforeAll(async () => {
++  if (!asked) return;
++  process.env.COMPUTER_BROWSER_MODE = "headless";
++  site = Bun.serve({
++    hostname: "127.0.0.1",
++    port: 0,
++    fetch(request) {
++      const { pathname } = new URL(request.url);
++      if (pathname.startsWith("/popup")) return page(`POPUP ${pathname}`, "<p>sign in</p>");
++      if (pathname === "/click")
++        return page(
++          "CLICK",
++          `<button id="open" onclick="window.__opened = !!window.open('/popup-click', 'signin', 'width=500,height=600')">Sign in</button>`,
++        );
++      if (pathname === "/click-later")
++        return page(
++          "LATER",
++          `<button id="open" onclick="setTimeout(() => { window.__opened = !!window.open('/popup-later', 'signin', 'width=500,height=600') }, 1000)">Sign in</button>`,
++        );
++      if (pathname === "/click-many")
++        return page(
++          "MANY",
++          `<button id="open" onclick="window.__opened = []; for (let i = 0; i < 10; i++) window.__opened.push(!!window.open('/popup-many-' + i, '_blank'))">Open</button>`,
++        );
++      if (pathname === "/no-click")
++        return page(
++          "NO CLICK",
++          `<script>
++            window.__opened = [];
++            for (let i = 0; i < 5; i++) window.__opened.push(!!window.open('/popup-load-' + i, '_blank'));
++            setTimeout(() => { for (let i = 0; i < 5; i++) window.__opened.push(!!window.open('/popup-timer-' + i, '_blank')); }, 300);
++          </script>`,
++        );
++      return page("HOME", "<p>home</p>");
++    },
++  });
++  const { createProfiles } = await import("../src/profiles?popup-blocking-browser");
++  root = await mkdtemp(join(tmpdir(), "openduet-popups-"));
++  profiles = createProfiles(root, () => {});
++});
++
++afterAll(async () => {
++  if (!asked) return;
++  await profiles?.closeAll();
++  site?.stop(true);
++  await rm(root, { recursive: true, force: true });
++});
++
++const at = (path: string) => `http://127.0.0.1:${site.port}${path}`;
++const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
++
++/** The Bot's open pages, waited for: Playwright reports a new window as an event. */
++async function openPages(atLeast: number, ms = 3_000) {
++  const start = Date.now();
++  for (;;) {
++    const pages = profiles.running(BOT)!.pages.filter((candidate) => !candidate.isClosed());
++    if (pages.length >= atLeast || Date.now() - start > ms) return pages;
++    await sleep(100);
++  }
++}
++
++/** Back to one tab between tests. */
++afterEach(async () => {
++  if (!asked) return;
++  const running = profiles.running(BOT);
++  if (!running) return;
++  const [first, ...rest] = running.pages;
++  for (const extra of rest) await extra.close().catch(() => undefined);
++  if (first) profiles.pick(BOT, first);
++});
++
++describe.skipIf(!asked)("Chromium's popup blocker", () => {
++  test("is on: the launched browser has no --disable-popup-blocking", async () => {
++    await profiles.page(BOT);
++    const { readdirSync, readFileSync } = await import("node:fs");
++    if (process.platform !== "linux") return; // /proc only; the launch options test covers the rest
++    const lines = readdirSync("/proc")
++      .filter((entry) => /^\d+$/.test(entry))
++      .map((pid) => {
++        try {
++          return readFileSync(`/proc/${pid}/cmdline`, "utf8");
++        } catch {
++          return "";
++        }
++      })
++      .filter((cmd) => cmd.includes(`openduet-popups-`));
++    expect(lines.length).toBeGreaterThan(0);
++    for (const cmd of lines) expect(cmd).not.toContain("--disable-popup-blocking");
++  });
++
++  test("a click opens the sign-in window, and the tab list counts it", async () => {
++    const opener = await profiles.page(BOT);
++    await opener.goto(at("/click"));
++    await opener.click("#open");
++    const pages = await openPages(2);
++    expect(pages).toHaveLength(2);
++    expect(await opener.evaluate(() => (window as unknown as { __opened: boolean }).__opened)).toBe(true);
++    const { listTabs } = await import("../src/bot-tabs");
++    const running = profiles.running(BOT)!;
++    const listed = await listTabs(running.pages, running.page);
++    expect(listed.tabs).toHaveLength(2);
++    expect(listed.tabs.some((tab) => tab.url.endsWith("/popup-click"))).toBe(true);
++    // The Bot follows the window, as it did before (follows-popup.test.ts).
++    expect((await profiles.page(BOT)).url()).toEndWith("/popup-click");
++  });
++
++  test("a click that waits a second before opening still opens it", async () => {
++    const opener = await profiles.page(BOT);
++    await opener.goto(at("/click-later"));
++    await opener.click("#open");
++    const pages = await openPages(2, 4_000);
++    expect(pages).toHaveLength(2);
++    expect(pages.some((candidate) => candidate.url().endsWith("/popup-later"))).toBe(true);
++  });
++
++  test("a page opening windows by itself gets none", async () => {
++    const opener = await profiles.page(BOT);
++    await opener.goto(at("/no-click"));
++    await sleep(1_500);
++    const pages = await openPages(2, 500);
++    expect(pages).toHaveLength(1);
++    const opened = await opener.evaluate(() => (window as unknown as { __opened: boolean[] }).__opened);
++    expect(opened).toHaveLength(10);
++    expect(opened.every((result) => result === false)).toBe(true);
++  });
++
++  test("one click opens one window, not ten", async () => {
++    const opener = await profiles.page(BOT);
++    await opener.goto(at("/click-many"));
++    await opener.click("#open");
++    await sleep(1_500);
++    const pages = await openPages(3, 500);
++    expect(pages).toHaveLength(2);
++    const opened = await opener.evaluate(() => (window as unknown as { __opened: boolean[] }).__opened);
++    expect(opened.filter(Boolean)).toHaveLength(1);
++  });
++});
+diff -ruN a/tests/profile-launch-options.test.ts b/tests/profile-launch-options.test.ts
+--- a/tests/profile-launch-options.test.ts	2026-10-28 00:00:00
++++ b/tests/profile-launch-options.test.ts	2026-10-28 00:00:00
+@@ -54,7 +54,11 @@
+         );
+         expect(options?.handleSIGINT).toBe(false);
+         expect(options?.handleSIGTERM).toBe(false);
+-        expect(options?.ignoreDefaultArgs).toEqual(["--enable-automation"]);
++        // OpenDuet patch 0007: Chromium's popup blocker stays on (Playwright turns it off).
++        expect(options?.ignoreDefaultArgs).toEqual([
++          "--enable-automation",
++          "--disable-popup-blocking",
++        ]);
+         if (backend === "local-chrome") {
+           expect(options?.chromiumSandbox).toBe(true);
+           expect(options?.args).not.toContain("--password-store=basic");

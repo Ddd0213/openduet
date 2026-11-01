@@ -1,0 +1,683 @@
+{
+  "VoiceSettings": [
+    {
+      "modelId": "mdl_step_rt",
+      "voice": "qingchunshaonv",
+      "voices": {
+        "gemini": [
+          "Puck",
+          "Charon",
+          "Kore",
+          "Fenrir",
+          "Aoede",
+          "Leda",
+          "Orus",
+          "Zephyr"
+        ],
+        "stepfun": [
+          "qingchunshaonv",
+          "wenrounansheng",
+          "linjiajiejie"
+        ]
+      },
+      "configured": true,
+      "providers": [
+        {
+          "id": "prv_step",
+          "kind": "stepfun",
+          "name": "StepFun",
+          "region": "cn",
+          "key": {
+            "set": true,
+            "last4": "k3Y9"
+          },
+          "status": "active",
+          "error": null,
+          "voices": [
+            "qingchunshaonv",
+            "wenrounansheng",
+            "linjiajiejie"
+          ],
+          "realtimeModels": [
+            {
+              "id": "mdl_step_rt",
+              "modelId": "stepaudio-3-realtime-preview",
+              "label": "stepaudio-3-realtime-preview"
+            }
+          ]
+        },
+        {
+          "id": "prv_step_intl",
+          "kind": "stepfun",
+          "name": "Step 国际",
+          "region": "intl",
+          "key": {
+            "set": true,
+            "last4": "k3Y9"
+          },
+          "status": "active",
+          "error": null,
+          "voices": [
+            "soft-spoken-gentleman",
+            "magnetic-voiced-male",
+            "vibrant-youth",
+            "lively-girl",
+            "livelybreezy-female",
+            "elegantgentle-female",
+            "zixinnansheng"
+          ],
+          "realtimeModels": [
+            {
+              "id": "mdl_step_intl_rt",
+              "modelId": "stepaudio-2.5-realtime",
+              "label": "StepAudio 2.5 Realtime"
+            }
+          ]
+        },
+        {
+          "id": "prv_gemini",
+          "kind": "gemini",
+          "name": "Google Gemini",
+          "region": null,
+          "key": {
+            "set": true,
+            "last4": "k3Y9"
+          },
+          "status": "active",
+          "error": null,
+          "voices": [
+            "Puck",
+            "Charon",
+            "Kore",
+            "Fenrir",
+            "Aoede",
+            "Leda",
+            "Orus",
+            "Zephyr"
+          ],
+          "realtimeModels": [
+            {
+              "id": "mdl_live",
+              "modelId": "gemini-live-2.5-flash-preview",
+              "label": "Gemini Live 2.5 Flash"
+            }
+          ]
+        }
+      ],
+      "presets": [
+        {
+          "kind": "gemini",
+          "regions": [],
+          "defaultRegion": null
+        },
+        {
+          "kind": "stepfun",
+          "regions": [
+            {
+              "region": "cn",
+              "host": "api.stepfun.com"
+            },
+            {
+              "region": "intl",
+              "host": "api.stepfun.ai"
+            }
+          ],
+          "defaultRegion": "cn"
+        }
+      ],
+      "dictation": {
+        "engine": "cloud",
+        "onDeviceOnly": false,
+        "providerId": "prv_step",
+        "modelId": "stepaudio-2.5-asr",
+        "cloudReady": true
+      }
+    },
+    {
+      "modelId": null,
+      "voice": null,
+      "voices": {
+        "gemini": [
+          "Puck",
+          "Charon",
+          "Kore",
+          "Fenrir",
+          "Aoede",
+          "Leda",
+          "Orus",
+          "Zephyr"
+        ],
+        "stepfun": [
+          "qingchunshaonv",
+          "wenrounansheng",
+          "linjiajiejie"
+        ]
+      },
+      "configured": false,
+      "providers": [
+        {
+          "id": "prv_gemini",
+          "kind": "gemini",
+          "name": "Google Gemini",
+          "region": null,
+          "key": {
+            "set": true,
+            "last4": "k3Y9"
+          },
+          "status": "failed",
+          "error": "the key was refused",
+          "voices": [
+            "Puck",
+            "Charon",
+            "Kore",
+            "Fenrir",
+            "Aoede",
+            "Leda",
+            "Orus",
+            "Zephyr"
+          ],
+          "realtimeModels": []
+        }
+      ],
+      "presets": [
+        {
+          "kind": "gemini",
+          "regions": [],
+          "defaultRegion": null
+        },
+        {
+          "kind": "stepfun",
+          "regions": [
+            {
+              "region": "cn",
+              "host": "api.stepfun.com"
+            },
+            {
+              "region": "intl",
+              "host": "api.stepfun.ai"
+            }
+          ],
+          "defaultRegion": "intl"
+        }
+      ],
+      "dictation": {
+        "engine": "device",
+        "onDeviceOnly": true,
+        "providerId": null,
+        "modelId": null,
+        "cloudReady": false
+      }
+    },
+    {
+      "modelId": null,
+      "voice": null,
+      "voices": {
+        "gemini": [
+          "Puck",
+          "Charon",
+          "Kore",
+          "Fenrir",
+          "Aoede",
+          "Leda",
+          "Orus",
+          "Zephyr"
+        ],
+        "stepfun": [
+          "qingchunshaonv",
+          "wenrounansheng",
+          "linjiajiejie"
+        ]
+      },
+      "configured": false,
+      "providers": [],
+      "presets": [
+        {
+          "kind": "gemini",
+          "regions": [],
+          "defaultRegion": null
+        },
+        {
+          "kind": "stepfun",
+          "regions": [
+            {
+              "region": "cn",
+              "host": "api.stepfun.com"
+            },
+            {
+              "region": "intl",
+              "host": "api.stepfun.ai"
+            }
+          ],
+          "defaultRegion": "cn"
+        }
+      ],
+      "dictation": {
+        "engine": "cloud",
+        "onDeviceOnly": false,
+        "providerId": null,
+        "modelId": null,
+        "cloudReady": false
+      }
+    },
+    {
+      "modelId": "mdl_step_rt",
+      "voice": "linjiajiejie",
+      "voices": {
+        "gemini": [
+          "Puck",
+          "Charon",
+          "Kore",
+          "Fenrir",
+          "Aoede",
+          "Leda",
+          "Orus",
+          "Zephyr"
+        ],
+        "stepfun": [
+          "qingchunshaonv",
+          "wenrounansheng",
+          "linjiajiejie"
+        ]
+      },
+      "configured": true
+    }
+  ],
+  "UpdateVoiceSettingsRequest": [
+    {
+      "dictation": {
+        "engine": "cloud",
+        "providerId": "prv_step",
+        "modelId": "stepaudio-2.5-asr"
+      }
+    },
+    {
+      "dictation": {
+        "engine": "device",
+        "onDeviceOnly": true
+      }
+    },
+    {
+      "dictation": {
+        "providerId": null,
+        "modelId": null
+      }
+    },
+    {
+      "modelId": "mdl_step_intl_rt",
+      "voice": "lively-girl"
+    }
+  ],
+  "ModelProviderResponse": [
+    {
+      "provider": {
+        "id": "prv_step",
+        "kind": "stepfun",
+        "protocol": "openai",
+        "name": "StepFun",
+        "baseUrl": "https://api.stepfun.com/v1",
+        "auth": null,
+        "key": {
+          "set": true,
+          "last4": "k3Y9"
+        },
+        "headers": [],
+        "status": "active",
+        "error": null,
+        "imported": false,
+        "modelCount": 2,
+        "createdAt": "2026-11-02T08:00:00.000Z",
+        "region": "cn"
+      }
+    },
+    {
+      "provider": {
+        "id": "prv_step_intl",
+        "kind": "stepfun",
+        "protocol": "openai",
+        "name": "Step 国际",
+        "baseUrl": "https://api.stepfun.ai/v1",
+        "auth": null,
+        "key": {
+          "set": true,
+          "last4": "k3Y9"
+        },
+        "headers": [],
+        "status": "active",
+        "error": null,
+        "imported": false,
+        "modelCount": 1,
+        "createdAt": "2026-11-02T08:00:00.000Z",
+        "region": "intl"
+      }
+    },
+    {
+      "provider": {
+        "id": "prv_gemini",
+        "kind": "gemini",
+        "protocol": "openai",
+        "name": "Google Gemini",
+        "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "auth": null,
+        "key": {
+          "set": true,
+          "last4": "k3Y9"
+        },
+        "headers": [],
+        "status": "active",
+        "error": null,
+        "imported": false,
+        "modelCount": 2,
+        "createdAt": "2026-11-02T08:00:00.000Z",
+        "region": null
+      }
+    }
+  ],
+  "CreateModelProviderRequest": [
+    {
+      "kind": "stepfun",
+      "key": "step-example-key",
+      "region": "intl"
+    },
+    {
+      "kind": "stepfun",
+      "name": "阶跃星辰",
+      "key": "step-example-key"
+    },
+    {
+      "kind": "gemini",
+      "key": "AIza-example-key"
+    }
+  ],
+  "UpdateModelProviderRequest": [
+    {
+      "region": "intl"
+    },
+    {
+      "region": "cn",
+      "key": "step-new-example-key"
+    }
+  ],
+  "RemoteModelList": [
+    {
+      "models": [
+        {
+          "modelId": "step-3.5-flash",
+          "label": "Step 3.5 Flash",
+          "contextWindow": 128000,
+          "maxOutputTokens": 8192,
+          "thinkingLevels": [],
+          "thinkingFormat": "none",
+          "tools": true,
+          "vision": false,
+          "realtime": false,
+          "source": "default",
+          "addedAs": null,
+          "transcription": false
+        },
+        {
+          "modelId": "stepaudio-2.5-asr",
+          "label": "stepaudio-2.5-asr",
+          "contextWindow": 128000,
+          "maxOutputTokens": 8192,
+          "thinkingLevels": [],
+          "thinkingFormat": "none",
+          "tools": true,
+          "vision": false,
+          "realtime": false,
+          "source": "default",
+          "addedAs": null,
+          "transcription": true
+        },
+        {
+          "modelId": "stepaudio-2.5-realtime",
+          "label": "StepAudio 2.5 Realtime",
+          "contextWindow": 128000,
+          "maxOutputTokens": 8192,
+          "thinkingLevels": [],
+          "thinkingFormat": "none",
+          "tools": false,
+          "vision": false,
+          "realtime": true,
+          "source": "default",
+          "addedAs": "mdl_step_intl_rt",
+          "transcription": false
+        }
+      ]
+    }
+  ],
+  "ModelsState": [
+    {
+      "providers": [
+        {
+          "id": "prv_openai",
+          "kind": "openai",
+          "protocol": "openai",
+          "name": "OpenAI",
+          "baseUrl": "https://api.openai.com/v1",
+          "auth": null,
+          "key": {
+            "set": true,
+            "last4": "k3Y9"
+          },
+          "headers": [],
+          "status": "active",
+          "error": null,
+          "imported": false,
+          "modelCount": 1,
+          "createdAt": "2026-11-02T08:00:00.000Z",
+          "region": null
+        },
+        {
+          "id": "prv_step",
+          "kind": "stepfun",
+          "protocol": "openai",
+          "name": "StepFun",
+          "baseUrl": "https://api.stepfun.com/v1",
+          "auth": null,
+          "key": {
+            "set": true,
+            "last4": "k3Y9"
+          },
+          "headers": [],
+          "status": "active",
+          "error": null,
+          "imported": false,
+          "modelCount": 2,
+          "createdAt": "2026-11-02T08:00:00.000Z",
+          "region": "cn"
+        },
+        {
+          "id": "prv_gemini",
+          "kind": "gemini",
+          "protocol": "openai",
+          "name": "Google Gemini",
+          "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+          "auth": null,
+          "key": {
+            "set": true,
+            "last4": "k3Y9"
+          },
+          "headers": [],
+          "status": "active",
+          "error": null,
+          "imported": false,
+          "modelCount": 2,
+          "createdAt": "2026-11-02T08:00:00.000Z",
+          "region": null
+        }
+      ],
+      "models": [
+        {
+          "id": "mdl_gpt",
+          "providerId": "prv_openai",
+          "purpose": "chat",
+          "modelId": "gpt-5.2",
+          "label": "GPT-5.2",
+          "contextWindow": 128000,
+          "maxOutputTokens": 8192,
+          "thinkingLevels": [],
+          "thinkingFormat": "none",
+          "defaultThinking": null,
+          "tools": true,
+          "vision": false,
+          "serverWebTools": false,
+          "promptCaching": false,
+          "source": "default",
+          "edited": [],
+          "createdAt": "2026-11-02T08:00:00.000Z"
+        },
+        {
+          "id": "mdl_step_chat",
+          "providerId": "prv_step",
+          "purpose": "chat",
+          "modelId": "step-3.5-flash",
+          "label": "Step 3.5 Flash",
+          "contextWindow": 128000,
+          "maxOutputTokens": 8192,
+          "thinkingLevels": [],
+          "thinkingFormat": "none",
+          "defaultThinking": null,
+          "tools": true,
+          "vision": false,
+          "serverWebTools": false,
+          "promptCaching": false,
+          "source": "default",
+          "edited": [],
+          "createdAt": "2026-11-02T08:00:00.000Z"
+        },
+        {
+          "id": "mdl_step_rt",
+          "providerId": "prv_step",
+          "purpose": "realtime",
+          "modelId": "stepaudio-3-realtime-preview",
+          "label": "stepaudio-3-realtime-preview",
+          "contextWindow": 128000,
+          "maxOutputTokens": 8192,
+          "thinkingLevels": [],
+          "thinkingFormat": "none",
+          "defaultThinking": null,
+          "tools": false,
+          "vision": false,
+          "serverWebTools": false,
+          "promptCaching": false,
+          "source": "default",
+          "edited": [],
+          "createdAt": "2026-11-02T08:00:00.000Z"
+        },
+        {
+          "id": "mdl_flash",
+          "providerId": "prv_gemini",
+          "purpose": "chat",
+          "modelId": "gemini-2.5-flash",
+          "label": "Gemini 2.5 Flash",
+          "contextWindow": 128000,
+          "maxOutputTokens": 8192,
+          "thinkingLevels": [],
+          "thinkingFormat": "none",
+          "defaultThinking": null,
+          "tools": true,
+          "vision": false,
+          "serverWebTools": false,
+          "promptCaching": false,
+          "source": "default",
+          "edited": [],
+          "createdAt": "2026-11-02T08:00:00.000Z"
+        },
+        {
+          "id": "mdl_live",
+          "providerId": "prv_gemini",
+          "purpose": "realtime",
+          "modelId": "gemini-live-2.5-flash-preview",
+          "label": "Gemini Live 2.5 Flash",
+          "contextWindow": 128000,
+          "maxOutputTokens": 8192,
+          "thinkingLevels": [],
+          "thinkingFormat": "none",
+          "defaultThinking": null,
+          "tools": false,
+          "vision": false,
+          "serverWebTools": false,
+          "promptCaching": false,
+          "source": "default",
+          "edited": [],
+          "createdAt": "2026-11-02T08:00:00.000Z"
+        }
+      ],
+      "defaults": {
+        "defaultModelId": "mdl_gpt",
+        "defaultThinking": null,
+        "utilityModelId": null
+      },
+      "configured": true
+    }
+  ],
+  "TranscriptionResponse": [
+    {
+      "text": "明天早上九点提醒我给王老师回电话"
+    },
+    {
+      "text": ""
+    }
+  ],
+  "ApiError": [
+    {
+      "error": {
+        "code": "transcription_failed",
+        "message": "StepFun refused the key (api.stepfun.ai)."
+      }
+    },
+    {
+      "error": {
+        "code": "transcription_failed",
+        "message": "Google didn't answer in time."
+      }
+    },
+    {
+      "error": {
+        "code": "not_configured",
+        "message": "Cloud dictation isn't set up: choose a provider and a model in Voice."
+      }
+    },
+    {
+      "error": {
+        "code": "too_large",
+        "message": "Dictation clips can be up to 120 seconds and 8 MB."
+      }
+    },
+    {
+      "error": {
+        "code": "unsupported_type",
+        "message": "Send a WAV file (16-bit PCM).",
+        "field": "file"
+      }
+    },
+    {
+      "error": {
+        "code": "validation_failed",
+        "message": "language: StepFun can't transcribe de",
+        "field": "language"
+      }
+    },
+    {
+      "error": {
+        "code": "validation_failed",
+        "message": "region: this key belongs to StepFun's international site (api.stepfun.ai)",
+        "field": "region"
+      }
+    },
+    {
+      "error": {
+        "code": "validation_failed",
+        "message": "region: only StepFun providers have a region",
+        "field": "region"
+      }
+    },
+    {
+      "error": {
+        "code": "validation_failed",
+        "message": "dictation.providerId: not a Gemini or StepFun provider",
+        "field": "dictation.providerId"
+      }
+    }
+  ]
+}

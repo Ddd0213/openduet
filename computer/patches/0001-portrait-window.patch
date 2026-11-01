@@ -1,0 +1,281 @@
+OpenDuet patch for CopilotKit/OpenBot agent-computer (MIT) at da9a3caf5784074baa779110dd7e9d1338c8871b.
+Headed mode on our Xvfb: a portrait 860x1600 screen (COMPUTER_BROWSER_SCREEN), Chromium's window fills it (scale 1.72, no fixed viewport, no --no-sandbox warning bar); /screenshot reports the page's CSS size.
+Applied in /app by computer/Dockerfile: patch -p1 --forward --fuzz=0. Regenerated with diff -ruN.
+
+diff -ruN a/src/index.ts b/src/index.ts
+--- a/src/index.ts	2026-10-28 00:00:00
++++ b/src/index.ts	2026-10-28 00:00:00
+@@ -1176,11 +1176,19 @@
+         try {
+           const target = await currentPage(botId);
+           // Sensitive fields are masked in the picture the Bot is handed. See secret-masking.ts.
++          // OpenDuet patch 0001: CSS pixels, so the picture's size is the size reported below even
++          // where the window has a device scale factor; with no fixed viewport (window mode) the
++          // size is the page's own.
+           const buffer = await target.screenshot({
+             type: "png",
++            scale: "css",
+             mask: [target.locator(SENSITIVE_FIELD_SELECTOR)],
+           });
+-          const size = target.viewportSize() ?? { width: 1280, height: 800 };
++          const size =
++            target.viewportSize() ??
++            (await target
++              .evaluate(() => ({ width: innerWidth, height: innerHeight }))
++              .catch(() => ({ width: 1280, height: 800 })));
+           return json({
+             base64: buffer.toString("base64"),
+             width: size.width,
+diff -ruN a/src/profiles.ts b/src/profiles.ts
+--- a/src/profiles.ts	2026-10-28 00:00:00
++++ b/src/profiles.ts	2026-10-28 00:00:00
+@@ -44,6 +44,7 @@
+ import { chooseLivePage } from "./live-page";
+ import { attachBrowserNetwork, attachPageNetwork } from "./page-network";
+ import { botIdsIn } from "./profile-listing";
++import { isWindowMode, screenFromEnv, windowArgs } from "./screen";
+ import {
+   type SessionCookieKeeper,
+   sessionCookieKeeper,
+@@ -101,7 +102,20 @@
+ // Native Chrome has no container boundary. Always retain its own process sandbox and OS keychain.
+ const SANDBOX_ENABLED = LOCAL_CHROME || process.env.COMPUTER_SANDBOX === "on";
+ 
++/*
++ * OpenDuet patch 0001: in window mode (a managed headed browser on our X server) the person watches
++ * and drives the whole Chrome window, so it is a real window filling the X screen (no kiosk) and the
++ * page follows the window's size: no fixed viewport.
++ */
++export const WINDOW_MODE = isWindowMode(BROWSER_RUNTIME);
++export const SCREEN = screenFromEnv(process.env);
++
+ const LAUNCH_ARGS = [
++  ...(WINDOW_MODE ? windowArgs(SCREEN) : []),
++  // A headed Chromium with --no-sandbox shows an "unsupported command-line flag" bar across every
++  // page (56 DIP of a portrait screen, measured). --test-type is the switch Chromium checks before
++  // showing it; nothing a page can read changes (navigator.webdriver stays false).
++  ...(WINDOW_MODE && !SANDBOX_ENABLED ? ["--test-type"] : []),
+   ...(SANDBOX_ENABLED ? [] : ["--no-sandbox"]),
+   "--disable-dev-shm-usage",
+   ...(LOCAL_CHROME ? [] : ["--password-store=basic"]),
+@@ -486,7 +500,7 @@
+           // means the flag above decides nothing and a deployment that asked for the sandbox does
+           // not get one. Verified by reading the launched process arguments, not by trusting either.
+           chromiumSandbox: SANDBOX_ENABLED,
+-          viewport: VIEWPORT,
++          viewport: WINDOW_MODE ? null : VIEWPORT,
+           // This process owns shutdown. Playwright's signal handlers kill Chromium immediately on
+           // SIGTERM, before pending cookie writes have time to flush.
+           handleSIGTERM: false,
+diff -ruN a/src/screen.ts b/src/screen.ts
+--- a/src/screen.ts	1970-01-01 08:00:00
++++ b/src/screen.ts	2026-10-28 00:00:00
+@@ -0,0 +1,69 @@
++/**
++ * OpenDuet patch (computer/patches/0001): the virtual screen a headed browser draws on.
++ *
++ * In window mode (headed, on the in-container X server) the live screen is the whole X screen:
++ * Chrome's own tab strip, address bar and pointer, not only the page. The phone watches it upright,
++ * so the default screen is portrait. Chromium will not make a window narrower than 500 DIP
++ * (measured on Chromium 151 under Xvfb: asked for 430, it drew 500 and overflowed the screen), so
++ * the portrait screen is 860x1600 pixels at a device scale factor of 1.72: a 500 CSS px wide page,
++ * near an iPhone's width, at a size the phone can read. `COMPUTER_BROWSER_SCREEN=landscape` gives
++ * the earlier 1280x800 at scale 1.
++ *
++ * The user agent stays desktop Chrome; a narrow window only makes responsive sites lay out narrow.
++ */
++import type { BrowserRuntime } from "./browser-runtime";
++
++export type ScreenLayout = "portrait" | "landscape";
++
++export type ScreenSpec = {
++  layout: ScreenLayout;
++  /** X screen pixels, which is also the size of every live-screen frame in window mode. */
++  width: number;
++  height: number;
++  /** Chromium's --force-device-scale-factor. */
++  scale: number;
++};
++
++const SCREENS: Record<ScreenLayout, ScreenSpec> = {
++  portrait: { layout: "portrait", width: 860, height: 1600, scale: 1.72 },
++  landscape: { layout: "landscape", width: 1280, height: 800, scale: 1 },
++};
++
++export function screenFromEnv(
++  env: Record<string, string | undefined>,
++): ScreenSpec {
++  const raw = env.COMPUTER_BROWSER_SCREEN?.trim() || "portrait";
++  if (raw !== "portrait" && raw !== "landscape") {
++    throw new Error(
++      `COMPUTER_BROWSER_SCREEN must be portrait or landscape, not ${JSON.stringify(raw)}.`,
++    );
++  }
++  return SCREENS[raw];
++}
++
++/** The Xvfb `-screen 0` geometry. */
++export function xvfbGeometry(screen: ScreenSpec): string {
++  return `${screen.width}x${screen.height}x24`;
++}
++
++/**
++ * Whether the live screen and input are the whole window: a managed Chromium drawn on our own X
++ * server. A native Chrome on somebody's desktop and every headless browser keep the page cast.
++ */
++export function isWindowMode(runtime: BrowserRuntime): boolean {
++  return runtime.backend === "managed" && runtime.useVirtualDisplay;
++}
++
++/**
++ * Chromium flags that make its one window fill the X screen. There is no window manager, so the
++ * position and size given are where the window stays. Rounded up (with a little slack for the
++ * float in the scale) so the window reaches the screen's last pixel rather than stopping one short.
++ */
++export function windowArgs(screen: ScreenSpec): string[] {
++  const dip = (pixels: number) => Math.ceil(pixels / screen.scale - 1e-6);
++  return [
++    `--force-device-scale-factor=${screen.scale}`,
++    "--window-position=0,0",
++    `--window-size=${dip(screen.width)},${dip(screen.height)}`,
++  ];
++}
+diff -ruN a/src/virtual-display.ts b/src/virtual-display.ts
+--- a/src/virtual-display.ts	2026-10-28 00:00:00
++++ b/src/virtual-display.ts	2026-10-28 00:00:00
+@@ -1,6 +1,7 @@
+ import { spawn } from "node:child_process";
+ import type { Readable } from "node:stream";
+ import type { BrowserMode } from "./browser-mode";
++import { type ScreenSpec, screenFromEnv, xvfbGeometry } from "./screen";
+ 
+ export type DisplayProcess = {
+   /** The display allocated by this exact Xvfb process, reported through -displayfd. */
+@@ -80,10 +81,16 @@
+   }
+ }
+ 
+-/** Start the local-only X display a headed computer needs. */
++/**
++ * Start the local-only X display a headed computer needs.
++ *
++ * OpenDuet patch 0001: sized from `screen.ts` (portrait 860x1600 by default) instead of a fixed
++ * 1280x800, because in window mode the X screen is what the person watches.
++ */
+ export async function startVirtualDisplay(
+   mode: BrowserMode,
+   runtime: DisplayRuntime = systemRuntime,
++  screen: ScreenSpec = screenFromEnv(process.env),
+ ): Promise<VirtualDisplay | null> {
+   if (mode === "headless") return null;
+ 
+@@ -92,7 +99,7 @@
+     "3",
+     "-screen",
+     "0",
+-    "1280x800x24",
++    xvfbGeometry(screen),
+     "-nolisten",
+     "tcp",
+     "-ac",
+diff -ruN a/tests/screen.test.ts b/tests/screen.test.ts
+--- a/tests/screen.test.ts	1970-01-01 08:00:00
++++ b/tests/screen.test.ts	2026-10-28 00:00:00
+@@ -0,0 +1,97 @@
++// OpenDuet patch 0001: the virtual screen and the window that fills it.
++import { describe, expect, test } from "bun:test";
++import { browserRuntimeFromEnv } from "../src/browser-runtime";
++import {
++  isWindowMode,
++  screenFromEnv,
++  windowArgs,
++  xvfbGeometry,
++} from "../src/screen";
++import {
++  type DisplayProcess,
++  type DisplayRuntime,
++  startVirtualDisplay,
++} from "../src/virtual-display";
++
++describe("the virtual screen", () => {
++  test("is portrait by default: 860x1600 at scale 1.72, a 500 CSS px page", () => {
++    const screen = screenFromEnv({});
++    expect(screen).toEqual({
++      layout: "portrait",
++      width: 860,
++      height: 1600,
++      scale: 1.72,
++    });
++    expect(xvfbGeometry(screen)).toBe("860x1600x24");
++    // Chromium's narrowest window is 500 DIP; the window must fit the screen exactly.
++    expect(windowArgs(screen)).toEqual([
++      "--force-device-scale-factor=1.72",
++      "--window-position=0,0",
++      "--window-size=500,931",
++    ]);
++  });
++
++  test("landscape is the earlier 1280x800 at scale 1", () => {
++    const screen = screenFromEnv({ COMPUTER_BROWSER_SCREEN: " landscape " });
++    expect(xvfbGeometry(screen)).toBe("1280x800x24");
++    expect(windowArgs(screen)).toContain("--window-size=1280,800");
++  });
++
++  test("refuses anything else", () => {
++    expect(() => screenFromEnv({ COMPUTER_BROWSER_SCREEN: "square" })).toThrow(
++      "COMPUTER_BROWSER_SCREEN must be portrait or landscape",
++    );
++  });
++
++  test("window mode is a managed headed browser on our own X server only", () => {
++    expect(
++      isWindowMode(
++        browserRuntimeFromEnv({ COMPUTER_BROWSER_MODE: "headed" }, "linux"),
++      ),
++    ).toBe(true);
++    expect(
++      isWindowMode(
++        browserRuntimeFromEnv({ COMPUTER_BROWSER_MODE: "headless" }, "linux"),
++      ),
++    ).toBe(false);
++    // A developer's Mac: headed, but no virtual display, so the page cast stays.
++    expect(
++      isWindowMode(
++        browserRuntimeFromEnv({ COMPUTER_BROWSER_MODE: "headed" }, "darwin"),
++      ),
++    ).toBe(false);
++    expect(
++      isWindowMode(
++        browserRuntimeFromEnv(
++          {
++            COMPUTER_BROWSER_BACKEND: "local-chrome",
++            COMPUTER_BROWSER_MODE: "headed",
++          },
++          "linux",
++        ),
++      ),
++    ).toBe(false);
++  });
++
++  test("Xvfb is started at the screen's size", async () => {
++    const spawned: string[][] = [];
++    const process: DisplayProcess = {
++      ready: Promise.resolve(":3"),
++      exited: new Promise(() => {}),
++      kill: () => true,
++    };
++    const runtime: DisplayRuntime = {
++      spawn: (_command, args) => {
++        spawned.push(args);
++        return process;
++      },
++      wait: () => new Promise(() => {}),
++    };
++    await startVirtualDisplay(
++      "headed",
++      runtime,
++      screenFromEnv({ COMPUTER_BROWSER_SCREEN: "portrait" }),
++    );
++    expect(spawned[0]).toContain("860x1600x24");
++  });
++});

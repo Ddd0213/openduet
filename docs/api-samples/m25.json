@@ -1,0 +1,219 @@
+{
+  "BuiltinConnectorList": [
+    {
+      "connectors": [
+        {
+          "id": "web_search",
+          "state": "on",
+          "providers": [
+            "Exa",
+            "Parallel"
+          ],
+          "keyless": true,
+          "checkedAt": "2027-01-19T08:12:00.000Z"
+        },
+        {
+          "id": "weather",
+          "state": "unreachable",
+          "providers": [
+            "Open-Meteo"
+          ],
+          "keyless": true,
+          "checkedAt": "2027-01-19T08:05:00.000Z"
+        },
+        {
+          "id": "exchange_rate",
+          "state": "on",
+          "providers": [
+            "Frankfurter"
+          ],
+          "keyless": true,
+          "checkedAt": null
+        },
+        {
+          "id": "read_feed",
+          "state": "on",
+          "providers": [],
+          "keyless": true,
+          "checkedAt": "2027-01-18T21:40:00.000Z"
+        }
+      ]
+    },
+    {
+      "connectors": [
+        {
+          "id": "web_search",
+          "state": "on",
+          "providers": [
+            "Tavily"
+          ],
+          "keyless": false,
+          "checkedAt": "2027-01-19T07:58:00.000Z"
+        },
+        {
+          "id": "weather",
+          "state": "on",
+          "providers": [
+            "Open-Meteo"
+          ],
+          "keyless": false,
+          "checkedAt": "2027-01-19T07:30:00.000Z"
+        },
+        {
+          "id": "exchange_rate",
+          "state": "on",
+          "providers": [
+            "Frankfurter"
+          ],
+          "keyless": true,
+          "checkedAt": null
+        },
+        {
+          "id": "read_feed",
+          "state": "off",
+          "providers": [],
+          "keyless": true,
+          "checkedAt": null
+        }
+      ]
+    },
+    {
+      "connectors": [
+        {
+          "id": "web_search",
+          "state": "off",
+          "providers": [],
+          "keyless": true,
+          "checkedAt": null
+        },
+        {
+          "id": "weather",
+          "state": "off",
+          "providers": [],
+          "keyless": true,
+          "checkedAt": null
+        },
+        {
+          "id": "exchange_rate",
+          "state": "off",
+          "providers": [],
+          "keyless": true,
+          "checkedAt": null
+        },
+        {
+          "id": "read_feed",
+          "state": "off",
+          "providers": [],
+          "keyless": true,
+          "checkedAt": null
+        }
+      ]
+    }
+  ],
+  "Skill": [
+    {
+      "id": "skill_up1",
+      "name": "meeting-minutes",
+      "description": "Turn meeting notes or a transcript into minutes: decisions, owners, dates.",
+      "instructions": "# Meeting minutes\n\nRead the notes, then write: Summary, Decisions, Action items (owner, due date), Open questions.",
+      "createdAt": "2027-01-19T08:20:00.000Z",
+      "source": "upload",
+      "sourceUrl": null,
+      "files": [
+        {
+          "path": "references/template.md",
+          "size": 1840,
+          "text": true
+        }
+      ],
+      "scope": "all",
+      "channelIds": []
+    }
+  ],
+  "SkillList": [
+    {
+      "skills": [
+        {
+          "id": "skill_up1",
+          "name": "meeting-minutes",
+          "description": "Turn meeting notes or a transcript into minutes: decisions, owners, dates.",
+          "instructions": "# Meeting minutes\n\nRead the notes, then write: Summary, Decisions, Action items (owner, due date), Open questions.",
+          "createdAt": "2027-01-19T08:20:00.000Z",
+          "source": "upload",
+          "sourceUrl": null,
+          "files": [
+            {
+              "path": "references/template.md",
+              "size": 1840,
+              "text": true
+            }
+          ],
+          "scope": "all",
+          "channelIds": []
+        },
+        {
+          "id": "skill_c2",
+          "name": "weekly-report",
+          "description": "My weekly report: wins, numbers, next week, in that order.",
+          "instructions": "Write the weekly report in three parts: Wins, Numbers (a table), Next week. Keep it under 200 words.",
+          "createdAt": "2027-01-19T09:02:00.000Z",
+          "source": "assistant",
+          "sourceUrl": null,
+          "files": [],
+          "scope": "all",
+          "channelIds": []
+        }
+      ]
+    },
+    {
+      "skills": []
+    }
+  ],
+  "SkillImportPreview": [
+    {
+      "importId": "imp_md1",
+      "source": "upload",
+      "sourceUrl": null,
+      "skills": [
+        {
+          "name": "weekly-report",
+          "description": "My weekly report: wins, numbers, next week, in that order.",
+          "excerpt": "Write the weekly report in three parts: Wins, Numbers (a table), Next week.",
+          "files": [],
+          "hasScripts": false,
+          "exists": false
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "importId": "imp_sk2",
+      "source": "upload",
+      "sourceUrl": null,
+      "skills": [
+        {
+          "name": "meeting-minutes",
+          "description": "Turn meeting notes or a transcript into minutes: decisions, owners, dates.",
+          "excerpt": "# Meeting minutes\n\nRead the notes, then write: Summary, Decisions, Action items (owner, due date), Open questions.",
+          "files": [
+            {
+              "path": "references/template.md",
+              "size": 1840,
+              "text": true
+            },
+            {
+              "path": "scripts/format.py",
+              "size": 912,
+              "text": true
+            }
+          ],
+          "hasScripts": true,
+          "exists": true
+        }
+      ],
+      "warnings": [
+        "meeting-minutes: name \"Meeting Minutes\" imported as meeting-minutes"
+      ]
+    }
+  ]
+}

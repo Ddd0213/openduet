@@ -1,0 +1,6 @@
+[
+  { "id": "recap_en", "lang": "en", "ask": "Make a skill that writes my client recap emails: three short bullets on what we agreed, then next steps with who owns each one." },
+  { "id": "quote_zh", "lang": "zh-Hans", "ask": "做一个技能，以后帮我写报价邮件：先一句感谢，再列项目、价格和排期，最后写付款方式。" },
+  { "id": "create_with_assistant_zh", "lang": "zh-Hans", "requireCreator": true, "ask": "帮我创建一个技能：把我的会议笔记整理成三条决定和带负责人的下一步，缺少负责人就标为待定。" },
+  { "id": "create_with_assistant_en", "lang": "en", "requireCreator": true, "ask": "Help me create a skill: turn my meeting notes into three decisions and next steps with owners, marking any missing owner as unassigned." }
+]

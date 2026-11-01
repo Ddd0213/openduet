@@ -1,0 +1,25 @@
+# PUBLIC_URL is the address the app types in, e.g. https://duet.example.com (no path, no trailing
+# slash). Caddy gets a certificate for its host name; the DNS record must point at this server and
+# ports 80 and 443 must be reachable from the internet.
+{
+	admin 127.0.0.1:2019
+}
+
+{$PUBLIC_URL} {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+	request_body {
+		# Same 30 MiB transport cap as Bun; route-specific limits are enforced by Hono.
+		max_size 31457280
+	}
+	log {
+		output stdout
+		format json
+	}
+	# Server-sent events (/api/events) are flushed as they arrive.
+	reverse_proxy backend:{$BACKEND_PORT:3000}
+}

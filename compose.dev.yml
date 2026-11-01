@@ -1,0 +1,46 @@
+# Development: run the backend on the host with `bun run dev` and OpenDuet's computer in Docker.
+#
+#   docker compose -f compose.yml -f compose.dev.yml up -d computer-dev
+#   # backend/.env: COMPUTER_URL=http://127.0.0.1:4100 (or ${COMPUTER_DEV_PORT})
+#   cd backend && bun run dev
+#
+# The computer stays on the internal network with no route out (all its traffic still goes through
+# egress). computer-dev is a small relay on a second network that publishes the computer's API on a
+# loopback-only host port; nothing else is published and the backend container is not started.
+services:
+  computer-dev:
+    image: caddy:2.11.7-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
+    command: ["caddy", "reverse-proxy", "--from", ":4100", "--to", "computer:4100"]
+    ports:
+      - "127.0.0.1:${COMPUTER_DEV_PORT:-4100}:4100"
+    networks: [internal, dev]
+    depends_on:
+      computer:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /data:size=8m
+      - /config:size=8m
+    cap_drop: [ALL]
+    # The caddy binary carries the cap_net_bind_service file capability; without it in the
+    # bounding set the kernel refuses to exec it.
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 64m
+    pids_limit: 64
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4100/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  dev: {}

@@ -1,0 +1,177 @@
+{
+  "ActiveRun": [
+    {
+      "runId": "run_21",
+      "kind": "chat",
+      "startedAt": "2026-10-29T01:02:03.004Z"
+    },
+    {
+      "runId": "run_22",
+      "kind": "routine",
+      "startedAt": "2026-10-29T07:00:00.000Z"
+    }
+  ],
+  "ArtifactWorkStatus": [
+    {
+      "state": "working",
+      "reason": null
+    },
+    {
+      "state": "failed",
+      "reason": {
+        "key": "artifact.user_in_control"
+      }
+    }
+  ],
+  "MarkReadRequest": [
+    {
+      "messageId": "msg_601"
+    },
+    {
+      "at": "2026-10-28T09:41:01.601Z",
+      "messageId": "msg_601"
+    }
+  ],
+  "ChannelList": {
+    "channels": [
+      {
+        "id": "ch_plan",
+        "isMain": false,
+        "name": "规划",
+        "icon": "calendar",
+        "colorHex": "#5D927A",
+        "purpose": "",
+        "archived": false,
+        "unreadCount": 0,
+        "lastReadAt": "2026-10-28T09:41:01.601Z",
+        "lastMessageAt": "2026-10-28T09:41:01.601Z",
+        "createdAt": "2026-10-20T08:00:00.000Z",
+        "soulExtra": "",
+        "useSharedMemory": true,
+        "modelId": null,
+        "thinkingLevel": null,
+        "activeRun": {
+          "runId": "run_21",
+          "kind": "chat",
+          "startedAt": "2026-10-29T01:02:03.004Z"
+        }
+      }
+    ]
+  },
+  "MessagePage": {
+    "messages": [],
+    "hasMore": false,
+    "activeRun": {
+      "runId": "run_21",
+      "kind": "chat",
+      "startedAt": "2026-10-29T01:02:03.004Z"
+    }
+  },
+  "DuetEvent": [
+    {
+      "id": 2101,
+      "type": "typing",
+      "channelId": "ch_main",
+      "createdAt": "2026-10-29T01:02:04.000Z",
+      "payload": {
+        "runId": "run_21",
+        "taskId": null,
+        "kind": "chat",
+        "typing": true
+      }
+    },
+    {
+      "id": 2102,
+      "type": "done",
+      "channelId": "ch_main",
+      "createdAt": "2026-10-29T01:05:00.000Z",
+      "payload": {
+        "runId": "run_23",
+        "taskId": null,
+        "kind": "build",
+        "status": "completed",
+        "error": null
+      }
+    },
+    {
+      "id": 2103,
+      "type": "artifact",
+      "channelId": "ch_main",
+      "createdAt": "2026-10-29T01:06:00.000Z",
+      "payload": {
+        "artifact": {
+          "id": "art_2",
+          "channelId": "ch_main",
+          "type": "dashboard",
+          "title": "AI2SQL funnel",
+          "status": "ready",
+          "sourceCount": 2,
+          "refreshSchedule": null,
+          "pinnedToTabBar": false,
+          "pinned": false,
+          "createdAt": "2026-10-25T09:00:00.000Z",
+          "updatedAt": "2026-10-29T01:06:00.000Z"
+        },
+        "buildStatus": null,
+        "editStatus": {
+          "state": "failed",
+          "reason": {
+            "key": "artifact.page_shrank"
+          }
+        },
+        "refreshStatus": null
+      }
+    },
+    {
+      "id": 2104,
+      "type": "channel",
+      "channelId": "ch_plan",
+      "createdAt": "2026-10-29T01:07:00.000Z",
+      "payload": {
+        "channel": {
+          "id": "ch_plan",
+          "isMain": false,
+          "name": "规划",
+          "icon": "calendar",
+          "colorHex": "#5D927A",
+          "purpose": "",
+          "archived": false,
+          "unreadCount": 1,
+          "lastReadAt": "2026-10-28T09:41:01.601Z",
+          "lastMessageAt": "2026-10-29T01:07:00.000Z",
+          "createdAt": "2026-10-20T08:00:00.000Z",
+          "soulExtra": "",
+          "useSharedMemory": true,
+          "modelId": null,
+          "thinkingLevel": null,
+          "activeRun": null
+        }
+      }
+    },
+    {
+      "id": 2105,
+      "type": "resync",
+      "channelId": null,
+      "createdAt": "2026-10-29T01:08:00.000Z",
+      "payload": {
+        "reason": "replay_limit"
+      }
+    },
+    {
+      "id": 2106,
+      "type": "notification",
+      "channelId": "ch_main",
+      "createdAt": "2026-10-29T01:09:00.000Z",
+      "payload": {
+        "title": {
+          "key": "notify.title"
+        },
+        "body": {
+          "text": "Approve sending the offsite email?"
+        },
+        "route": "duet://channels/ch_main?message=msg_77",
+        "collapseId": "approval-apr_9"
+      }
+    }
+  ]
+}

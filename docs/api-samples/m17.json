@@ -1,0 +1,403 @@
+{
+  "ConnectorTemplateList": [
+    {
+      "templates": [
+        {
+          "name": "app.linear/linear",
+          "title": "Linear",
+          "description": "Issues and projects",
+          "website": "https://linear.app",
+          "iconUrl": "https://linear.app/static/apple-touch-icon.png",
+          "remote": {
+            "type": "streamable-http",
+            "url": "https://mcp.linear.app/mcp"
+          },
+          "inputs": [],
+          "needsSignIn": true,
+          "installed": false,
+          "featured": true
+        },
+        {
+          "name": "com.notion/mcp",
+          "title": "Notion",
+          "description": "Pages and databases",
+          "website": null,
+          "iconUrl": null,
+          "remote": {
+            "type": "streamable-http",
+            "url": "https://mcp.notion.com/mcp"
+          },
+          "inputs": [],
+          "needsSignIn": true,
+          "installed": true,
+          "featured": true
+        },
+        {
+          "name": "io.github.github/github-mcp-server",
+          "title": "GitHub",
+          "description": "Repositories, pull requests and issues",
+          "website": null,
+          "iconUrl": null,
+          "remote": {
+            "type": "streamable-http",
+            "url": "https://api.githubcopilot.com/mcp/"
+          },
+          "inputs": [
+            {
+              "name": "Authorization",
+              "description": "A GitHub personal access token",
+              "secret": true,
+              "required": true,
+              "kind": "header"
+            }
+          ],
+          "needsSignIn": null,
+          "installed": false,
+          "featured": true
+        },
+        {
+          "name": "io.github.upstash/context7",
+          "title": "Context7",
+          "description": "Up-to-date docs for libraries",
+          "website": null,
+          "iconUrl": null,
+          "remote": {
+            "type": "streamable-http",
+            "url": "https://mcp.context7.com/mcp"
+          },
+          "inputs": [],
+          "needsSignIn": false,
+          "installed": false,
+          "featured": true
+        },
+        {
+          "name": "com.example/tenant-mcp",
+          "title": "Example Tenant",
+          "description": "One workspace's tools",
+          "website": null,
+          "iconUrl": null,
+          "remote": {
+            "type": "streamable-http",
+            "url": "https://{tenant}.example.com/mcp"
+          },
+          "inputs": [
+            {
+              "name": "tenant",
+              "description": "Your workspace name",
+              "secret": false,
+              "required": true,
+              "kind": "urlVariable"
+            },
+            {
+              "name": "X-Region",
+              "description": "Optional region",
+              "secret": false,
+              "required": false,
+              "kind": "header"
+            }
+          ],
+          "needsSignIn": null,
+          "installed": false,
+          "featured": false
+        },
+        {
+          "name": "com.example/events",
+          "title": "Events",
+          "description": "",
+          "website": null,
+          "iconUrl": null,
+          "remote": {
+            "type": "sse",
+            "url": "https://events.example.com/sse"
+          },
+          "inputs": [],
+          "needsSignIn": null,
+          "installed": false,
+          "featured": false
+        }
+      ],
+      "nextCursor": "com.example/events:1.0.0"
+    },
+    {
+      "templates": [],
+      "nextCursor": null
+    }
+  ],
+  "InstallTemplateRequest": [
+    {
+      "name": "app.linear/linear"
+    },
+    {
+      "name": "io.github.github/github-mcp-server",
+      "inputs": {
+        "Authorization": "ghp_exampletoken"
+      }
+    }
+  ],
+  "InstallTemplateResponse": [
+    {
+      "connector": {
+        "id": "cc_lin",
+        "kind": "mcp",
+        "name": "Linear",
+        "description": "",
+        "url": "https://mcp.linear.app/mcp",
+        "domain": null,
+        "headerName": null,
+        "valuePrefix": null,
+        "secret": null,
+        "headers": [],
+        "status": "failed",
+        "error": "Sign in to Linear to finish connecting it.",
+        "tools": [],
+        "scope": "all",
+        "channelIds": [],
+        "createdAt": "2026-12-13T09:00:00.000Z",
+        "registryName": "app.linear/linear",
+        "oauth": {
+          "signedIn": false,
+          "needsSignIn": true,
+          "expiresAt": null
+        }
+      },
+      "needsSignIn": true
+    },
+    {
+      "connector": {
+        "id": "cc_c7",
+        "kind": "mcp",
+        "name": "Context7",
+        "description": "",
+        "url": "https://mcp.context7.com/mcp",
+        "domain": null,
+        "headerName": null,
+        "valuePrefix": null,
+        "secret": null,
+        "headers": [],
+        "status": "active",
+        "error": null,
+        "tools": [
+          {
+            "name": "get-library-docs",
+            "description": "Up-to-date docs for a library.",
+            "access": "read",
+            "mode": "always"
+          }
+        ],
+        "scope": "all",
+        "channelIds": [],
+        "createdAt": "2026-12-13T09:00:00.000Z",
+        "registryName": "io.github.upstash/context7",
+        "oauth": null
+      },
+      "needsSignIn": false
+    },
+    {
+      "connector": {
+        "id": "cc_gh",
+        "kind": "mcp",
+        "name": "GitHub",
+        "description": "",
+        "url": "https://api.githubcopilot.com/mcp/",
+        "domain": null,
+        "headerName": null,
+        "valuePrefix": null,
+        "secret": null,
+        "headers": [
+          {
+            "name": "Authorization",
+            "secret": true,
+            "value": null,
+            "secretInfo": {
+              "set": true,
+              "last4": "x9Qa"
+            }
+          }
+        ],
+        "status": "active",
+        "error": null,
+        "tools": [],
+        "scope": "all",
+        "channelIds": [],
+        "createdAt": "2026-12-13T09:00:00.000Z",
+        "registryName": "io.github.github/github-mcp-server",
+        "oauth": null
+      },
+      "needsSignIn": false
+    }
+  ],
+  "OAuthStartResponse": {
+    "authorizeUrl": "https://mcp.linear.app/authorize?response_type=code&client_id=duet-abc&redirect_uri=duet%3A%2F%2Foauth%2Fcallback&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256&state=st_123&resource=https%3A%2F%2Fmcp.linear.app%2Fmcp",
+    "callbackScheme": "duet",
+    "redirectUri": "duet://oauth/callback",
+    "expiresAt": "2026-12-13T09:10:00.000Z"
+  },
+  "OAuthFinishRequest": [
+    {
+      "state": "st_123",
+      "code": "code_abc"
+    },
+    {
+      "state": "st_123",
+      "error": "access_denied",
+      "errorDescription": "The user denied the request"
+    }
+  ],
+  "ImportConnectorsRequest": {
+    "json": "{\"mcpServers\":{\"linear\":{\"url\":\"https://mcp.linear.app/mcp\"},\"files\":{\"command\":\"npx\",\"args\":[\"-y\",\"files-mcp\"]}}}"
+  },
+  "ImportConnectorsResponse": {
+    "connectors": [
+      {
+        "id": "cc_lin2",
+        "kind": "mcp",
+        "name": "linear",
+        "description": "",
+        "url": "https://mcp.linear.app/mcp",
+        "domain": null,
+        "headerName": null,
+        "valuePrefix": null,
+        "secret": null,
+        "headers": [],
+        "status": "failed",
+        "error": "Sign in to linear to finish connecting it.",
+        "tools": [],
+        "scope": "all",
+        "channelIds": [],
+        "createdAt": "2026-12-13T09:00:00.000Z",
+        "registryName": null,
+        "oauth": {
+          "signedIn": false,
+          "needsSignIn": true,
+          "expiresAt": null
+        }
+      },
+      {
+        "id": "cc_api",
+        "kind": "mcp",
+        "name": "my-api",
+        "description": "",
+        "url": "https://mcp.example.com",
+        "domain": null,
+        "headerName": null,
+        "valuePrefix": null,
+        "secret": null,
+        "headers": [
+          {
+            "name": "Authorization",
+            "secret": true,
+            "value": null,
+            "secretInfo": {
+              "set": true,
+              "last4": "4f2b"
+            }
+          }
+        ],
+        "status": "active",
+        "error": null,
+        "tools": [
+          {
+            "name": "search",
+            "description": "Search the catalogue.",
+            "access": "read",
+            "mode": "always"
+          }
+        ],
+        "scope": "all",
+        "channelIds": [],
+        "createdAt": "2026-12-13T09:00:00.000Z",
+        "registryName": null,
+        "oauth": null
+      }
+    ],
+    "skipped": [
+      {
+        "name": "files",
+        "reason": "stdio",
+        "message": "files runs a local command; a hosted server can't run it."
+      },
+      {
+        "name": "shop",
+        "reason": "exists",
+        "message": "A connector with https://mcp.shop.example/mcp is there already."
+      },
+      {
+        "name": "local",
+        "reason": "invalid",
+        "message": "url: Only https addresses on a public host name work."
+      },
+      {
+        "name": "broken",
+        "reason": "failed",
+        "message": "url: mcp.broken.example couldn't be reached."
+      }
+    ]
+  },
+  "CustomConnectorResponse": [
+    {
+      "connector": {
+        "id": "cc_lin",
+        "kind": "mcp",
+        "name": "Linear",
+        "description": "",
+        "url": "https://mcp.linear.app/mcp",
+        "domain": null,
+        "headerName": null,
+        "valuePrefix": null,
+        "secret": null,
+        "headers": [],
+        "status": "active",
+        "error": null,
+        "tools": [
+          {
+            "name": "list_issues",
+            "description": "List issues.",
+            "access": "read",
+            "mode": "always"
+          },
+          {
+            "name": "create_issue",
+            "description": "Create an issue.",
+            "access": "write",
+            "mode": "ask"
+          }
+        ],
+        "scope": "all",
+        "channelIds": [],
+        "createdAt": "2026-12-13T09:00:00.000Z",
+        "registryName": "app.linear/linear",
+        "oauth": {
+          "signedIn": true,
+          "needsSignIn": false,
+          "expiresAt": "2026-12-13T10:00:00.000Z"
+        }
+      }
+    },
+    {
+      "connector": {
+        "id": "cc_lin",
+        "kind": "mcp",
+        "name": "Linear",
+        "description": "",
+        "url": "https://mcp.linear.app/mcp",
+        "domain": null,
+        "headerName": null,
+        "valuePrefix": null,
+        "secret": null,
+        "headers": [],
+        "status": "failed",
+        "error": "Sign in to Linear to finish connecting it.",
+        "tools": [],
+        "scope": "all",
+        "channelIds": [],
+        "createdAt": "2026-12-13T09:00:00.000Z",
+        "registryName": "app.linear/linear",
+        "oauth": {
+          "signedIn": false,
+          "needsSignIn": true,
+          "expiresAt": null
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,93 @@
+# XcodeGen spec (single owner: the main agent). Generate with `xcodegen generate`.
+# The generated OpenDuet.xcodeproj is not committed.
+name: OpenDuet
+options:
+  bundleIdPrefix: dev.openduet
+  deploymentTarget:
+    iOS: "18.0"
+  developmentLanguage: en
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    LOCALIZATION_PREFERS_STRING_CATALOGS: "YES"
+    SWIFT_EMIT_LOC_STRINGS: "YES"
+targets:
+  OpenDuet:
+    type: application
+    platform: iOS
+    sources:
+      - path: OpenDuet
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.openduet.OpenDuet
+        PRODUCT_NAME: OpenDuet
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        GENERATE_INFOPLIST_FILE: "NO"
+    info:
+      path: OpenDuet/Info.plist
+      properties:
+        CFBundleDisplayName: OpenDuet
+        CFBundleDevelopmentRegion: en
+        CFBundleLocalizations: [en, zh-Hans]
+        CFBundleAllowMixedLocalizations: true
+        ITSAppUsesNonExemptEncryption: false
+        LSRequiresIPhoneOS: true
+        # L185: the app background with the centred mascot (same drawing as LaunchView).
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+          UIImageName: LaunchMascot
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        # Landscape is allowed only while the full-screen "OpenDuet's computer" view is up (L143);
+        # AppDelegate.supportedInterfaceOrientationsFor keeps every other screen portrait.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIUserInterfaceStyle: Automatic
+        # L173: plain-http LAN addresses; the app itself refuses http for public hosts.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: OpenDuet connects to your own server on your network.
+        NSMicrophoneUsageDescription: OpenDuet uses the microphone for dictation and voice calls.
+        # M13: a voice call goes on with the screen locked. M21: remote-notification for the silent
+        # push that withdraws a decided approval's notification.
+        UIBackgroundModes: [audio, remote-notification]
+        NSSpeechRecognitionUsageDescription: OpenDuet turns your speech into text in the composer.
+        NSCameraUsageDescription: OpenDuet uses the camera to attach photos to messages.
+        NSPhotoLibraryUsageDescription: OpenDuet lets you attach photos to messages.
+        NSPhotoLibraryAddUsageDescription: OpenDuet saves images you choose to your photo library.
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.openduet.OpenDuet
+            CFBundleURLSchemes: [duet]
+  OpenDuetTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: OpenDuetTests
+      - path: ../docs/api-samples
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - target: OpenDuet
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.openduet.OpenDuetTests
+        GENERATE_INFOPLIST_FILE: "YES"
+schemes:
+  OpenDuet:
+    build:
+      targets:
+        OpenDuet: all
+        OpenDuetTests: [test]
+    test:
+      targets:
+        - OpenDuetTests

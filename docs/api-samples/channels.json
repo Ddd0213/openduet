@@ -1,0 +1,39 @@
+{
+  "ChannelList": {
+    "channels": [
+      {
+        "id": "ch_main", "isMain": true, "name": "", "icon": "checkbox", "colorHex": "#E69F4E", "purpose": "",
+        "archived": false, "unreadCount": 0, "lastReadAt": "2026-10-25T08:47:00.000Z",
+        "lastMessageAt": "2026-10-25T08:47:00.000Z", "createdAt": "2026-10-25T08:00:00.000Z"
+      },
+      {
+        "id": "ch_q4", "isMain": false, "name": "Q4 planning", "icon": "chart", "colorHex": "#6290C2",
+        "purpose": "Roadmap, hiring and the Northfield renewal.", "archived": false, "unreadCount": 2,
+        "lastReadAt": null, "lastMessageAt": "2026-10-25T09:12:00.000Z", "createdAt": "2026-10-25T09:00:00.000Z"
+      }
+    ]
+  },
+  "CreateChannelRequest": { "name": "Q4 planning", "icon": "chart", "colorHex": "#6290C2", "purpose": "Roadmap and hiring." },
+  "UpdateChannelRequest": [{ "archived": true }, { "name": "Q4 + Q1 planning", "colorHex": "#5D927A" }],
+  "MarkReadRequest": { "at": "2026-10-25T09:12:00.000Z" },
+  "ChannelFileList": {
+    "files": [
+      {
+        "id": "file_2", "channelId": "ch_main", "messageId": "msg_file", "name": "Launch review brief.pdf",
+        "mime": "application/pdf", "size": 482113, "source": "assistant", "url": "/api/files/file_2/content",
+        "createdAt": "2026-10-25T09:30:00.000Z"
+      },
+      {
+        "id": "file_1", "channelId": "ch_main", "messageId": "msg_user_img", "name": "IMG_0412.jpg",
+        "mime": "image/jpeg", "size": 1803321, "source": "user", "url": "/api/files/file_1/content",
+        "createdAt": "2026-10-25T08:50:00.000Z"
+      }
+    ]
+  },
+  "UploadFileResponse": {
+    "file": {
+      "id": "file_3", "channelId": "ch_main", "messageId": null, "name": "notes.md", "mime": "text/markdown",
+      "size": 2210, "source": "user", "url": "/api/files/file_3/content", "createdAt": "2026-10-25T09:40:00.000Z"
+    }
+  }
+}

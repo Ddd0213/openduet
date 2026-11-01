@@ -1,0 +1,8 @@
+[
+  { "id": "ev01", "title": "Studio stand-up", "day": 0, "start": "09:30", "end": "09:45", "attendees": ["sam@northlight-studio.example", "mei@northlight-studio.example"] },
+  { "id": "ev02", "title": "周会", "day": 0, "start": "14:00", "end": "15:00", "location": "Studio", "attendees": ["sam@northlight-studio.example", "mei@northlight-studio.example"] },
+  { "id": "ev03", "title": "Call with Greenleaf (陈总)", "day": 0, "start": "16:30", "end": "17:00", "location": "Video", "attendees": ["chen@greenleaf-tea.example"] },
+  { "id": "ev04", "title": "牙医", "day": 1, "start": "10:00", "end": "11:00", "location": "Jing'an Dental" },
+  { "id": "ev05", "title": "Hearth & Co files due", "day": 2, "start": "18:00", "end": "18:30" },
+  { "id": "ev06", "title": "Design review: Greenleaf", "day": 5, "start": "10:00", "end": "11:30", "attendees": ["chen@greenleaf-tea.example", "mei@northlight-studio.example"] }
+]

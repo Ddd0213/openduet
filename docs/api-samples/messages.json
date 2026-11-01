@@ -1,0 +1,319 @@
+{
+  "MessagePage": {
+    "hasMore": true,
+    "messages": [
+      {
+        "id": "msg_user_img", "channelId": "ch_main", "taskId": null, "role": "user", "kind": "text",
+        "text": "Can you sign my team up for the conference?", "status": "seen", "clientId": "c-001",
+        "reactions": [{ "emoji": "👍", "by": "assistant" }],
+        "payload": {
+          "skill": null,
+          "attachments": [{
+            "id": "file_1", "channelId": "ch_main", "messageId": "msg_user_img", "name": "IMG_0412.jpg", "mime": "image/jpeg",
+            "size": 1803321, "source": "user", "url": "/api/files/file_1/content", "createdAt": "2026-10-25T08:50:00.000Z"
+          }]
+        },
+        "createdAt": "2026-10-25T08:50:00.000Z", "updatedAt": "2026-10-25T08:50:02.000Z"
+      },
+      {
+        "id": "msg_assistant", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "text",
+        "text": "On it. I started [Conference sign-up](duet://tasks/task_1) and made [the Monday brief](duet://artifacts/art_1).",
+        "status": "sent", "clientId": null, "reactions": [], "payload": { "skill": null, "attachments": [] },
+        "createdAt": "2026-10-25T08:50:04.000Z", "updatedAt": "2026-10-25T08:50:04.000Z"
+      },
+      {
+        "id": "msg_stopped", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "text",
+        "text": "Here's a first pass at the agenda:\n\n1. Welcome and goals\n2. Product roadmap",
+        "status": "sent", "clientId": null, "reactions": [], "stopped": true, "payload": { "skill": null, "attachments": [], "replyTo": null },
+        "createdAt": "2026-10-25T08:50:05.000Z", "updatedAt": "2026-10-25T08:50:07.000Z"
+      },
+      {
+        "id": "msg_file", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "file",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": {
+          "caption": "Here's the brief for the launch review.",
+          "file": {
+            "id": "file_2", "channelId": "ch_main", "messageId": "msg_file", "name": "Launch review brief.pdf", "mime": "application/pdf",
+            "size": 482113, "source": "assistant", "url": "/api/files/file_2/content", "createdAt": "2026-10-25T09:30:00.000Z"
+          }
+        },
+        "createdAt": "2026-10-25T09:30:00.000Z", "updatedAt": "2026-10-25T09:30:00.000Z"
+      },
+      {
+        "id": "msg_img", "channelId": "ch_main", "taskId": "task_1", "role": "assistant", "kind": "image",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": {
+          "caption": "The form before I send it.",
+          "file": {
+            "id": "file_4", "channelId": "ch_main", "messageId": "msg_img", "name": "screenshot.png", "mime": "image/png",
+            "size": 210331, "source": "assistant", "url": "/api/files/file_4/content", "createdAt": "2026-10-25T08:52:00.000Z"
+          }
+        },
+        "createdAt": "2026-10-25T08:52:00.000Z", "updatedAt": "2026-10-25T08:52:00.000Z"
+      },
+      {
+        "id": "msg_spawn", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "task_spawn",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": {
+          "anchorMessageId": "msg_user_img",
+          "task": {
+            "id": "task_1", "channelId": "ch_main", "title": "Conference sign-up", "status": "working", "source": "user",
+            "latestUpdate": null, "updateCount": 0, "schedule": null, "archived": false,
+            "createdAt": "2026-10-25T08:50:04.000Z", "updatedAt": "2026-10-25T08:50:04.000Z"
+          }
+        },
+        "createdAt": "2026-10-25T08:50:04.000Z", "updatedAt": "2026-10-25T08:50:04.000Z"
+      },
+      {
+        "id": "msg_sugg", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "task_suggestions",
+        "text": "A few places I can start", "status": "sent", "clientId": null, "reactions": [],
+        "payload": {
+          "items": [
+            { "id": "s1", "title": "Draft the launch review agenda", "prompt": "Draft an agenda for Tuesday's launch review", "app": "Google Calendar", "taskId": "task_2" },
+            { "id": "s2", "title": "Reply to the Northfield thread", "prompt": "Draft a reply to the Northfield renewal email", "app": "Gmail", "taskId": null }
+          ]
+        },
+        "createdAt": "2026-10-25T08:47:30.000Z", "updatedAt": "2026-10-25T08:48:00.000Z"
+      },
+      {
+        "id": "msg_proactive", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "proactive_suggestion",
+        "text": "A task I could help with:", "status": "sent", "clientId": null, "reactions": [],
+        "payload": { "title": "Prep for the 2 PM", "body": "Pull notes and open questions for the design sync.", "prompt": "Prep me for the 2 PM design sync", "state": "open", "taskId": null },
+        "createdAt": "2026-10-25T10:49:00.000Z", "updatedAt": "2026-10-25T10:49:00.000Z"
+      },
+      {
+        "id": "msg_qr", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "quick_replies",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": { "options": ["Sounds right", "Something's off"], "chosen": null },
+        "createdAt": "2026-10-25T08:47:20.000Z", "updatedAt": "2026-10-25T08:47:20.000Z"
+      },
+      {
+        "id": "msg_approval", "channelId": "ch_main", "taskId": "task_2", "role": "assistant", "kind": "approval",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": {
+          "approval": {
+            "id": "apr_1", "kind": "email", "status": "pending", "version": 2, "expiresAt": null, "taskId": "task_2", "messageId": "msg_approval",
+            "preview": {
+              "kind": "email", "app": "Gmail", "to": ["sam@example.com"], "cc": [], "subject": "Re: Northfield renewal",
+              "body": "Hi Sam,\n\nThanks for sending this over. I'm excited to keep working together.\n\nAlex", "attachments": []
+            },
+            "result": null, "changedFields": ["body"], "updatedAt": "2026-10-25T09:05:00.000Z"
+          }
+        },
+        "createdAt": "2026-10-25T09:00:00.000Z", "updatedAt": "2026-10-25T09:05:00.000Z"
+      },
+      {
+        "id": "msg_spend", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "spend_request",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": {
+          "spendRequest": {
+            "id": "spr_1", "approvalId": "apr_2", "amount": 1649, "currency": "USD", "merchant": "Blue Bottle Coffee",
+            "description": "Coffee for the team offsite", "item": "2 x Bella Donovan, 12 oz", "expiresAt": "2026-10-25T10:14:00.000Z",
+            "status": "pending", "testMode": true
+          }
+        },
+        "createdAt": "2026-10-25T10:00:00.000Z", "updatedAt": "2026-10-25T10:00:00.000Z"
+      },
+      {
+        "id": "msg_confirm", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "confirmation",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": { "title": "Evals review booked", "detail": "Tue Oct 20, 1:45 to 2:30pm with Sam and Priya", "app": "Google Calendar" },
+        "createdAt": "2026-10-25T10:20:00.000Z", "updatedAt": "2026-10-25T10:20:00.000Z"
+      },
+      {
+        "id": "msg_alert", "channelId": "ch_main", "taskId": "task_1", "role": "assistant", "kind": "alert",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": {
+          "title": { "key": "alert.one_thing" },
+          "body": { "key": "alert.human_check", "params": { "domain": { "type": "text", "value": "events.example.com" } } },
+          "action": { "label": { "key": "alert.open_browser" }, "type": "open_browser", "url": null, "toolkit": null }
+        },
+        "createdAt": "2026-10-25T08:53:00.000Z", "updatedAt": "2026-10-25T08:53:00.000Z"
+      },
+      {
+        "id": "msg_alert2", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "alert",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": {
+          "title": { "key": "alert.one_thing" },
+          "body": { "text": "Priya asked in #launch whether the demo is still on for Thursday." },
+          "action": { "label": { "text": "Open Slack" }, "type": "open_url", "url": "https://slack.com/app_redirect?channel=C123", "toolkit": "slack" }
+        },
+        "createdAt": "2026-10-25T13:49:00.000Z", "updatedAt": "2026-10-25T13:49:00.000Z"
+      },
+      {
+        "id": "msg_plate", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "plate",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": {
+          "items": [
+            { "id": "p1", "title": "Reply to Sam about the renewal", "detail": "Gmail · yesterday", "action": { "label": "Draft", "prompt": "Draft a reply to Sam about the renewal" }, "done": false },
+            { "id": "p2", "title": "Find time for the evals review", "detail": "Google Calendar", "action": { "label": "Book", "prompt": "Book the evals review this week" }, "done": true }
+          ]
+        },
+        "createdAt": "2026-10-25T08:19:00.000Z", "updatedAt": "2026-10-25T08:30:00.000Z"
+      },
+      {
+        "id": "msg_sys", "channelId": "ch_main", "taskId": null, "role": "system", "kind": "system",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": { "phrase": { "key": "system.reminder_set", "params": { "at": { "type": "datetime", "value": "2026-10-26T17:00:00.000Z" } } } },
+        "createdAt": "2026-10-25T10:30:00.000Z", "updatedAt": "2026-10-25T10:30:00.000Z"
+      },
+      {
+        "id": "msg_sys_err", "channelId": "ch_main", "taskId": null, "role": "system", "kind": "system",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": { "phrase": { "key": "system.model_error", "params": { "status": { "type": "number", "value": 401 } } } },
+        "createdAt": "2026-10-25T10:31:00.000Z", "updatedAt": "2026-10-25T10:31:00.000Z"
+      },
+      {
+        "id": "msg_limit", "channelId": "ch_main", "taskId": null, "role": "system", "kind": "usage_limit",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": { "resumesAt": "2026-10-29T18:00:00.000Z" },
+        "createdAt": "2026-10-25T11:00:00.000Z", "updatedAt": "2026-10-25T11:00:00.000Z"
+      },
+      {
+        "id": "msg_artifact", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "artifact",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": {
+          "artifact": {
+            "id": "art_1", "channelId": "ch_main", "type": "dashboard", "title": "Launch metrics", "status": "ready", "sourceCount": 2,
+            "refreshSchedule": { "cadence": "daily", "hour": 5, "minute": 30 }, "pinnedToTabBar": false,
+            "createdAt": "2026-10-25T09:00:00.000Z", "updatedAt": "2026-10-25T09:10:00.000Z"
+          },
+          "metrics": [
+            { "label": "Signups", "value": 1284, "unit": null },
+            { "label": "Conversion", "value": 3.4, "unit": "%" }
+          ]
+        },
+        "createdAt": "2026-10-25T09:10:00.000Z", "updatedAt": "2026-10-25T09:10:00.000Z"
+      },
+      {
+        "id": "msg_live", "channelId": "ch_main", "taskId": "task_1", "role": "assistant", "kind": "live_browser",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": { "domain": "events.example.com", "state": "live" },
+        "createdAt": "2026-10-25T08:51:00.000Z", "updatedAt": "2026-10-25T08:51:00.000Z"
+      },
+      {
+        "id": "msg_signin", "channelId": "ch_main", "taskId": "task_1", "role": "assistant", "kind": "sign_in",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": { "requestId": "sir_1", "domain": "events.example.com", "state": "pending" },
+        "createdAt": "2026-10-25T08:51:30.000Z", "updatedAt": "2026-10-25T08:51:30.000Z"
+      },
+      {
+        "id": "msg_skill", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "skill_proposal",
+        "text": "Save this as a skill?", "status": "sent", "clientId": null, "reactions": [],
+        "payload": { "name": "my-writing-style", "description": "Short, warm replies that end with a clear next step.", "instructions": "Write in short paragraphs...", "state": "open", "skillId": null },
+        "createdAt": "2026-10-25T11:30:00.000Z", "updatedAt": "2026-10-25T11:30:00.000Z"
+      },
+      {
+        "id": "msg_task_done", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "text",
+        "text": "Done: [Conference sign-up](duet://tasks/task_1)\n\nAll three of you are registered for DevSummit on Nov 14; the confirmations are in your inbox.",
+        "status": "sent", "clientId": null, "reactions": [], "payload": { "skill": null, "attachments": [], "replyTo": null },
+        "createdAt": "2026-10-25T11:40:00.000Z", "updatedAt": "2026-10-25T11:40:00.000Z"
+      },
+      {
+        "id": "msg_user_quote", "channelId": "ch_main", "taskId": null, "role": "user", "kind": "text",
+        "text": "Can you add Priya too?", "status": "seen", "clientId": "c-006", "reactions": [],
+        "payload": {
+          "skill": null, "attachments": [],
+          "replyTo": { "messageId": "msg_task_done", "role": "assistant", "excerpt": "Done: Conference sign-up All three of you are registered for DevSummit on Nov 14; the confirmations are in your inbox." }
+        },
+        "createdAt": "2026-10-25T11:42:00.000Z", "updatedAt": "2026-10-25T11:42:05.000Z"
+      },
+      {
+        "id": "msg_form", "channelId": "ch_main", "taskId": "task_1", "role": "assistant", "kind": "form",
+        "text": "A few quick questions so I can fill in your profile.", "status": "sent", "clientId": null, "reactions": [],
+        "payload": {
+          "title": "How you like to work", "description": "Pick what fits; you can change any of it later.", "icon": "person",
+          "fields": [
+            { "id": "f_role", "type": "single", "label": "What do you mostly do?", "required": true, "allowOther": true,
+              "options": [{ "id": "o_pm", "label": "Product or project lead", "detail": null }, { "id": "o_dev", "label": "Independent developer", "detail": null }, { "id": "o_student", "label": "Student or researcher", "detail": null }] },
+            { "id": "f_when", "type": "multi", "label": "When should I check in with you?", "required": false, "allowOther": false,
+              "options": [{ "id": "o_morning", "label": "Every morning", "detail": "One summary" }, { "id": "o_evening", "label": "Early evening", "detail": null }, { "id": "o_urgent", "label": "Anytime it's urgent", "detail": null }] },
+            { "id": "f_notes", "type": "text", "label": "Anything else I should know?", "required": false, "placeholder": "Optional", "multiline": true }
+          ],
+          "submitLabel": null, "state": "open", "answers": null
+        },
+        "createdAt": "2026-10-25T11:50:00.000Z", "updatedAt": "2026-10-25T11:50:00.000Z"
+      },
+      {
+        "id": "msg_form_done", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "form",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": {
+          "title": "Reply length", "description": null, "icon": "chat",
+          "fields": [
+            { "id": "f_len", "type": "single", "label": "How long should my replies be?", "required": true, "allowOther": false,
+              "options": [{ "id": "o_short", "label": "A sentence or two", "detail": null }, { "id": "o_mid", "label": "3 to 5 points", "detail": null }] }
+          ],
+          "submitLabel": "Save", "state": "submitted",
+          "answers": [{ "fieldId": "f_len", "optionIds": ["o_short"], "text": null }]
+        },
+        "createdAt": "2026-10-25T11:52:00.000Z", "updatedAt": "2026-10-25T11:53:00.000Z"
+      },
+      {
+        "id": "msg_form_withdrawn", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "form",
+        "text": "", "status": "sent", "clientId": null, "reactions": [],
+        "payload": {
+          "title": "Notion page location", "description": null, "icon": "link",
+          "fields": [{ "id": "f_location", "type": "text", "label": "Where should it go?", "required": false, "placeholder": null, "multiline": false }],
+          "submitLabel": null, "state": "dismissed", "answers": null, "closedBy": "assistant"
+        },
+        "createdAt": "2026-10-25T11:54:00.000Z", "updatedAt": "2026-10-25T11:54:00.000Z"
+      },
+      {
+        "id": "msg_card", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "card",
+        "text": "Here's where the launch stands.", "status": "sent", "clientId": null, "reactions": [],
+        "payload": {
+          "icon": "dashboard", "tint": "blue", "title": "Launch status", "subtitle": "Updated from your tasks",
+          "blocks": [
+            { "type": "metrics", "items": [{ "label": "Open tasks", "value": "7", "delta": "-2", "trend": "down" }, { "label": "Days left", "value": "4", "delta": null, "trend": null }] },
+            { "type": "progress", "label": "QA checklist", "value": 0.6, "detail": "12 of 20" },
+            { "type": "rows", "rows": [{ "icon": "calendar", "title": "Launch review", "detail": "Tue 1:45 PM", "value": null }, { "icon": "mail", "title": "Press note", "detail": "Waiting on Sam", "value": "Draft" }] },
+            { "type": "checklist", "items": [{ "text": "Final copy", "done": true }, { "text": "App Store screenshots", "done": false }] },
+            { "type": "bars", "items": [{ "label": "Mon", "value": 3 }, { "label": "Tue", "value": 5 }, { "label": "Wed", "value": 2 }], "unit": "tasks" },
+            { "type": "text", "text": "The screenshots are the only thing on the critical path." }
+          ],
+          "actions": [
+            { "label": "Draft the press note", "type": "send", "value": "Draft the press note for the launch", "style": "primary" },
+            { "label": "Open tasks", "type": "open_route", "value": "duet://tasks", "style": "secondary" }
+          ]
+        },
+        "createdAt": "2026-10-25T11:55:00.000Z", "updatedAt": "2026-10-25T11:55:00.000Z"
+      },
+      {
+        "id": "msg_sugg_icon", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "task_suggestions",
+        "text": "A few places I can start", "status": "sent", "clientId": null, "reactions": [],
+        "payload": { "items": [{ "id": "s9", "title": "Write a profile of how you work", "prompt": "Write a short doc about how I like to work", "app": null, "icon": "doc", "taskId": null }] },
+        "createdAt": "2026-10-25T11:56:00.000Z", "updatedAt": "2026-10-25T11:56:00.000Z"
+      }
+    ]
+  },
+  "SendMessageRequest": [
+    { "text": "What's on my plate today?", "clientId": "c-002" },
+    { "text": "", "clientId": "c-003", "fileIds": ["file_3"] },
+    { "text": "Sounds right", "clientId": "c-004", "quickReply": { "messageId": "msg_qr", "option": "Sounds right" } },
+    { "text": "Reply to Sam", "clientId": "c-005", "skill": "my-writing-style" },
+    { "text": "Can you add Priya too?", "clientId": "c-006", "replyTo": "msg_task_done" },
+    { "text": "What do you mostly do?: Independent developer\nWhen should I check in with you?: Every morning, Anytime it's urgent", "clientId": "c-007",
+      "form": { "messageId": "msg_form", "answers": [
+        { "fieldId": "f_role", "optionIds": ["o_dev"], "text": null },
+        { "fieldId": "f_when", "optionIds": ["o_morning", "o_urgent"], "text": null }
+      ] } }
+  ],
+  "MessageActionRequest": [{ "action": "start", "itemId": "s2" }, { "action": "hide" }, { "action": "save_skill" }, { "action": "dismiss" }],
+  "MessageActionResponse": {
+    "message": {
+      "id": "msg_proactive", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "proactive_suggestion",
+      "text": "A task I could help with:", "status": "sent", "clientId": null, "reactions": [],
+      "payload": { "title": "Prep for the 2 PM", "body": "Pull notes and open questions for the design sync.", "prompt": "Prep me for the 2 PM design sync", "state": "started", "taskId": "task_3" },
+      "createdAt": "2026-10-25T10:49:00.000Z", "updatedAt": "2026-10-25T10:50:00.000Z"
+    }
+  },
+  "ReactionResponse": {
+    "message": {
+      "id": "msg_assistant", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "text", "text": "On it.",
+      "status": "sent", "clientId": null, "reactions": [{ "emoji": "❤️", "by": "user" }], "payload": { "skill": null, "attachments": [] },
+      "createdAt": "2026-10-25T08:50:04.000Z", "updatedAt": "2026-10-25T08:55:00.000Z"
+    }
+  },
+  "FeedbackRequest": [{ "messageId": "msg_assistant", "rating": "good" }, { "text": "Briefs could be shorter on Mondays." }],
+  "StopResponse": { "stopped": 1 }
+}

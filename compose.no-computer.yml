@@ -1,0 +1,18 @@
+# OpenDuet's computer not deployed (M20): ./scripts/setup.sh --computer off adds this file to
+# COMPOSE_FILE in backend/.env. The computer and its egress proxy go behind a profile nobody turns
+# on, so their images aren't pulled or built and their containers don't start; their volumes stay,
+# so the sites OpenDuet signed in to are still there after ./scripts/setup.sh --computer on.
+# The backend runs without a computer: the app shows the computer as not set up, with what it
+# would add and the command that deploys it.
+services:
+  computer:
+    profiles: [computer]
+  computer-init:
+    profiles: [computer]
+  computer-exec:
+    profiles: [computer]
+  egress:
+    profiles: [computer]
+  backend:
+    environment:
+      COMPUTER_URL: ""

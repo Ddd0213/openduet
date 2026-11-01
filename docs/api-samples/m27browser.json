@@ -1,0 +1,59 @@
+{
+  "BrowserBar": [
+    {
+      "supported": true,
+      "browserBarInFrame": false,
+      "tabs": [
+        { "id": "8E1C2A9F5B4D47C0A1E2B3C4D5E6F708", "url": "https://www.npmjs.com/package/zod", "title": "zod - npm", "active": false },
+        { "id": "F679780A12B34C5D6E7F8091A2B3C4D5", "url": "https://www.bing.com/search?q=ramen%20near%20me", "title": "ramen near me - Search", "active": true },
+        { "id": "0A1B2C3D4E5F60718293A4B5C6D7E8F9", "url": "", "title": "", "active": false },
+        { "id": "5D6E7F8091A2B3C4D5F679780A12B34C", "url": "https://www.google.com/search?q=weather%20in%20paris", "title": "weather in paris - Google Search", "active": false }
+      ],
+      "canGoBack": true,
+      "canGoForward": false
+    },
+    {
+      "supported": true,
+      "browserBarInFrame": false,
+      "tabs": [
+        { "id": "6448AF0E9D8C7B6A5F4E3D2C1B0A9988", "url": "http://shop.example.invalid/", "title": "", "active": true }
+      ],
+      "canGoBack": false,
+      "canGoForward": false
+    },
+    { "supported": true, "browserBarInFrame": false, "tabs": [], "canGoBack": false, "canGoForward": false },
+    { "supported": false, "browserBarInFrame": false, "tabs": [], "canGoBack": false, "canGoForward": false },
+    {
+      "supported": true,
+      "browserBarInFrame": true,
+      "tabs": [{ "id": "B1", "url": "https://example.com/", "title": "Example Domain", "active": true }],
+      "canGoBack": false,
+      "canGoForward": false
+    }
+  ],
+  "NewTabRequest": [{}, { "address": "weather in paris" }, { "address": "news.ycombinator.com" }],
+  "NavigateRequest": [
+    { "address": "example.com" },
+    { "action": "back" },
+    { "action": "forward" },
+    { "action": "reload" }
+  ],
+  "ComputerServerMessage": [
+    { "type": "frame_meta", "width": 1280, "height": 800 },
+    {
+      "type": "browser_bar",
+      "bar": {
+        "supported": true,
+        "browserBarInFrame": false,
+        "tabs": [{ "id": "F679780A12B34C5D6E7F8091A2B3C4D5", "url": "https://www.bing.com/", "title": "Search - Microsoft Bing", "active": true }],
+        "canGoBack": false,
+        "canGoForward": false
+      }
+    }
+  ],
+  "ApiError": [
+    { "error": { "code": "take_over_first", "message": "Take over the browser first." } },
+    { "error": { "code": "tabs_unsupported", "message": "Claude's computer needs an update for tabs." } },
+    { "error": { "code": "validation_failed", "message": "address: only web addresses (http or https) can be opened", "field": "address" } }
+  ]
+}

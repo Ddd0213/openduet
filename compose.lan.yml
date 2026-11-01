@@ -1,0 +1,10 @@
+# LAN and Tailscale modes: the backend publishes its port on the host.
+# setup.sh selects this file with COMPOSE_FILE=compose.yml:compose.lan.yml in backend/.env.
+#   LAN:       BIND_ADDR=0.0.0.0 (or one interface's address); open PORT in the host firewall only
+#              for your LAN. Docker-published ports bypass ufw/firewalld.
+#   Tailscale: BIND_ADDR=127.0.0.1, then on the host: tailscale serve --bg ${PORT}
+# Caddy and tunnel modes leave this file out, so the backend publishes nothing.
+services:
+  backend:
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${PORT:-3000}:${PORT:-3000}"

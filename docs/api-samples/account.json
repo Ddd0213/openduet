@@ -1,0 +1,55 @@
+{
+  "ConnectorList": [
+    { "configured": true, "connectors": [
+      { "toolkit": "gmail", "name": "Gmail", "description": "Read, draft and send email.", "logoUrl": "/api/connectors/gmail/logo", "category": "mail",
+        "accounts": [{ "id": "ca_1", "label": "alex@example.com", "status": "active", "connectedAt": "2026-10-25T08:10:00.000Z" }] },
+      { "toolkit": "googledocs", "name": "Google Docs", "description": "Read and edit documents.", "logoUrl": "/api/connectors/googledocs/logo", "category": "files", "accounts": [] }
+    ] },
+    { "configured": false, "connectors": [] }
+  ],
+  "ConnectorDetail": {
+    "connector": { "toolkit": "gmail", "name": "Gmail", "description": "Read, draft and send email.", "logoUrl": "/api/connectors/gmail/logo", "category": "mail",
+      "accounts": [{ "id": "ca_1", "label": "alex@example.com", "status": "active", "connectedAt": "2026-10-25T08:10:00.000Z" }] },
+    "tools": [
+      { "slug": "GMAIL_FETCH_EMAILS", "name": "Fetch emails", "description": "List recent messages.", "access": "read", "mode": "always", "common": true },
+      { "slug": "GMAIL_SEND_EMAIL", "name": "Send email", "description": "Send a message.", "access": "write", "mode": "ask", "common": true }
+    ]
+  },
+  "ConnectResponse": { "url": "https://connect.composio.dev/link/lk_abc123", "callbackScheme": "duet" },
+  "UpdatePolicyRequest": [{ "tool": "GMAIL_SEND_EMAIL", "mode": "always" }, { "tool": null, "mode": "ask" }],
+  "UsageState": [
+    { "session": { "used": 0, "limit": 3000000, "resetsAt": null }, "weekly": { "used": 0, "limit": 30000000, "resetsAt": null },
+      "fullReset": { "available": true, "expiresAt": "2026-11-01T06:59:59.000Z" }, "limited": false, "resumesAt": null },
+    { "session": { "used": 3000412, "limit": 3000000, "resetsAt": "2026-10-25T13:00:00.000Z" }, "weekly": { "used": 9400000, "limit": 0, "resetsAt": null },
+      "fullReset": { "available": false, "expiresAt": "2026-11-01T06:59:59.000Z" }, "limited": true, "resumesAt": "2026-10-25T13:00:00.000Z" }
+  ],
+  "UsageStats": [
+    { "range": "7d", "since": "2026-10-19T16:00:00.000Z", "until": "2026-10-25T12:00:00.000Z",
+      "totals": { "inputTokens": 1820400, "outputTokens": 214300, "runs": 96 }, "estimated": true,
+      "byModel": [
+        { "model": "deepseek-v4-flash", "label": "DeepSeek V4 Flash", "provider": "default", "inputTokens": 1700000, "outputTokens": 200000, "runs": 90 },
+        { "model": "glm-5.3", "label": "glm-5.3", "provider": "relay", "inputTokens": 120400, "outputTokens": 14300, "runs": 6 }
+      ],
+      "byKind": [
+        { "kind": "chat", "inputTokens": 900000, "outputTokens": 100000, "runs": 60 },
+        { "kind": "task", "inputTokens": 600000, "outputTokens": 80000, "runs": 20 },
+        { "kind": "build", "inputTokens": 250000, "outputTokens": 30000, "runs": 4 },
+        { "kind": "proactive", "inputTokens": 70400, "outputTokens": 4300, "runs": 12 }
+      ],
+      "bucket": "day",
+      "series": [
+        { "start": "2026-10-19T16:00:00.000Z", "inputTokens": 0, "outputTokens": 0 },
+        { "start": "2026-10-20T16:00:00.000Z", "inputTokens": 1820400, "outputTokens": 214300 }
+      ] },
+    { "range": "all", "since": null, "until": "2026-10-25T12:00:00.000Z",
+      "totals": { "inputTokens": 0, "outputTokens": 0, "runs": 0 }, "estimated": false,
+      "byModel": [], "byKind": [], "bucket": "month", "series": [] }
+  ],
+  "MemoryState": { "document": "# About Alex\n- Runs a small product studio.\n- Prefers short replies.", "facts": [
+    { "id": "mem_1", "text": "Launch review moved to Tuesday.", "createdAt": "2026-10-25T09:00:00.000Z" }], "updatedAt": "2026-10-25T09:00:00.000Z" },
+  "UpdateMemoryRequest": { "document": "# About Alex\n- Runs a small product studio." },
+  "RegisterDeviceRequest": { "provider": "apns", "token": "8f2b6c1d9e0a7f3b5c4d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b", "environment": "sandbox", "locale": "zh-Hans" },
+  "RegisterDeviceResponse": { "deviceId": "dev_1" },
+  "SkillList": { "skills": [{ "id": "sk_1", "name": "my-writing-style", "description": "Short, warm replies.", "instructions": "Write in short paragraphs.", "createdAt": "2026-10-25T11:31:00.000Z" }] },
+  "CreateSkillRequest": { "name": "my-writing-style", "description": "Short, warm replies.", "instructions": "Write in short paragraphs." }
+}

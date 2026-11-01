@@ -1,0 +1,875 @@
+OpenDuet patch for CopilotKit/OpenBot agent-computer (MIT) at da9a3caf5784074baa779110dd7e9d1338c8871b.
+computer_exec in a container of its own: src/exec-server.ts runs shell.ts behind a unix socket (bun src/exec-server.ts, COMPUTER_EXEC_SOCKET); /exec forwards there when COMPUTER_EXEC_SOCKET is set, after the token and wheel checks, with the timeout and Stop (src/remote-shell.ts), and never falls back to running in this process.
+Applied in /app by computer/Dockerfile: patch -p1 --forward --fuzz=0. Regenerated with diff -ruN.
+
+diff -ruN a/src/exec-server.ts b/src/exec-server.ts
+--- a/src/exec-server.ts	1970-01-01 08:00:00
++++ b/src/exec-server.ts	2026-10-28 00:00:00
+@@ -0,0 +1,334 @@
++/**
++ * OpenDuet patch 0008: the computer's shell in a container of its own.
++ *
++ * WHY. A command run in the computer's container can reach everything that container holds: the
++ * browser profiles in /profiles (cookies and saved sign-ins), the computer's own process and its
++ * environment (`/proc/<pid>/environ` carries COMPUTER_TOKEN), and in headed mode the X display the
++ * person watches. The gateway's policy decides whether a command may run, but once one runs it is
++ * the container that decides what it can reach (shell.ts says the same). So the shell moves out.
++ *
++ * WHAT THIS IS. `shell.ts` behind a unix socket, run with `bun src/exec-server.ts` in a container
++ * that mounts only /workspace and the socket's directory. The computer's `/exec` forwards here when
++ * COMPUTER_EXEC_SOCKET is set (remote-shell.ts); it still checks the token and the wheel first.
++ *
++ * NO TOKEN HERE. Nothing but a unix socket listens, the socket is mode 600 and its directory is
++ * shared only between this container and the computer, both running as the same uid. A token would
++ * be one more secret in a container whose whole point is to hold none.
++ *
++ * The same folder rules as the file tools (workspaces.ts), so `COMPUTER_SEPARATE_WORKSPACES` must be
++ * set the same way here and on the computer.
++ */
++import { chmod, lstat, mkdir, rm, unlink, writeFile } from "node:fs/promises";
++import { dirname, join } from "node:path";
++import { isPlainBotId } from "./bot-id";
++import { startEgressFilter } from "./egress";
++import { parseExecTimeout } from "./request-validation";
++import type { ShellResult } from "./shell";
++import { createWorkspaces } from "./workspaces";
++
++/** A run id names one command, so a Stop can find it. A uuid fits; nothing longer is needed. */
++const RUN_ID = /^[A-Za-z0-9_-]{1,64}$/;
++
++/**
++ * Bigger than any command can be. Linux refuses a single argument over 128 KiB (MAX_ARG_STRLEN),
++ * and the command reaches bash as one, so a body past this could never have run anyway.
++ */
++const MAX_BODY_BYTES = 1024 * 1024;
++
++/** How long a Stop for a command that has not arrived yet is remembered. */
++const CANCEL_MEMORY_MS = 60_000;
++const CANCEL_MEMORY_MAX = 1_000;
++
++export type ExecServerOptions = {
++  /** The unix socket to listen on. Its directory is created mode 700 if missing. */
++  socketPath: string;
++  /** The workspace root, the same folder the computer's file tools use. */
++  workspaceRoot: string;
++  /** COMPUTER_SEPARATE_WORKSPACES=on: one folder per Bot under `computers/`. */
++  separate: boolean;
++  /** What a command's environment is built from (shell.ts passes an allow-list of it). */
++  sourceEnv?: NodeJS.ProcessEnv;
++};
++
++export type ExecServer = {
++  socketPath: string;
++  stop: () => Promise<void>;
++};
++
++type Running = {
++  controller: AbortController;
++  done: Promise<ShellResult | null>;
++};
++
++function json(body: unknown, status = 200): Response {
++  return Response.json(body, { status });
++}
++
++function describe(error: unknown, fallback: string): string {
++  return error instanceof Error ? error.message : fallback;
++}
++
++async function readBody(request: Request): Promise<unknown> {
++  const declared = Number(request.headers.get("content-length") ?? "0");
++  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return null;
++  const text = await request.text().catch(() => "");
++  if (Buffer.byteLength(text, "utf8") > MAX_BODY_BYTES) return null;
++  try {
++    return JSON.parse(text);
++  } catch {
++    return null;
++  }
++}
++
++/**
++ * Whatever is at the socket's path from an earlier run.
++ *
++ * A container killed without a clean stop leaves its socket file behind, and listening on a path
++ * that exists fails. That file is removed, but only once it is known to be a socket nobody answers:
++ * a regular file or a directory there is not ours to delete, and a server that still answers means
++ * a second copy of this container, which should not quietly take the first one's place.
++ */
++async function clearStaleSocket(socketPath: string): Promise<void> {
++  const existing = await lstat(socketPath).catch((error: NodeJS.ErrnoException) => {
++    if (error.code === "ENOENT") return null;
++    throw error;
++  });
++  if (!existing) return;
++  if (!existing.isSocket()) {
++    throw new Error(
++      `${socketPath} exists and is not a socket, so the command runner will not replace it.`,
++    );
++  }
++  const answered = await fetch("http://localhost/health", {
++    unix: socketPath,
++    signal: AbortSignal.timeout(1_000),
++  })
++    .then(() => true)
++    .catch(() => false);
++  if (answered) {
++    throw new Error(
++      `Another command runner is already answering on ${socketPath}.`,
++    );
++  }
++  await unlink(socketPath).catch((error: NodeJS.ErrnoException) => {
++    if (error.code !== "ENOENT") throw error;
++  });
++}
++
++export async function startExecServer(
++  options: ExecServerOptions,
++): Promise<ExecServer> {
++  const { socketPath } = options;
++  const workspaces = createWorkspaces(
++    options.workspaceRoot,
++    options.separate,
++    options.sourceEnv ?? process.env,
++  );
++  const running = new Map<string, Running>();
++  const anonymous = new Set<Running>();
++  const cancelled = new Map<string, number>();
++
++  const rememberCancel = (runId: string) => {
++    const now = Date.now();
++    for (const [id, at] of cancelled) {
++      if (now - at <= CANCEL_MEMORY_MS && cancelled.size < CANCEL_MEMORY_MAX)
++        break;
++      cancelled.delete(id);
++    }
++    cancelled.set(runId, now);
++  };
++
++  await mkdir(dirname(socketPath), { recursive: true, mode: 0o700 });
++  await clearStaleSocket(socketPath);
++
++  const server = Bun.serve({
++    unix: socketPath,
++    /*
++     * No idle limit. Bun's default is 10 seconds, and a command sends nothing until it ends, so an
++     * install could come back as a dropped connection. The command's own timeout is the limit
++     * (shell.ts).
++     *
++     * Measured on Bun 1.3.6 and 1.4.3 over a unix socket: a request without a body is cut at about
++     * 12 seconds unless this is 0 (`server.timeout(request, 0)` does not help), and a POST with a
++     * body, which is what `/exec` is, was not cut. Set anyway, so the answer does not depend on
++     * that. bun-types declares the option for a TCP server only, hence the spread.
++     */
++    ...({ idleTimeout: 0 } as object),
++    maxRequestBodySize: MAX_BODY_BYTES,
++    async fetch(request) {
++      const url = new URL(request.url);
++
++      if (url.pathname === "/health" && request.method === "GET") {
++        return json({ ok: true, running: running.size + anonymous.size });
++      }
++
++      if (url.pathname === "/exec" && request.method === "POST") {
++        const body = (await readBody(request)) as {
++          botId?: unknown;
++          command?: unknown;
++          timeoutMs?: unknown;
++          runId?: unknown;
++        } | null;
++        if (typeof body?.botId !== "string" || !isPlainBotId(body.botId)) {
++          return json({ error: "That is not a usable bot id." }, 400);
++        }
++        if (typeof body.command !== "string" || !body.command.trim()) {
++          return json({ error: "A command is required." }, 400);
++        }
++        const timeout = parseExecTimeout(body.timeoutMs);
++        if (!timeout.ok) return json({ error: timeout.error }, 400);
++        let runId: string | undefined;
++        if (body.runId !== undefined) {
++          if (typeof body.runId !== "string" || !RUN_ID.test(body.runId)) {
++            return json({ error: "That is not a usable run id." }, 400);
++          }
++          runId = body.runId;
++          if (running.has(runId)) {
++            return json({ error: "That run id is already running." }, 409);
++          }
++          // The Stop beat the command here: it never starts.
++          if (cancelled.delete(runId)) {
++            return json({ error: "The command was stopped before it started." }, 409);
++          }
++        }
++
++        // Stopped by the caller going away (the computer aborts its request on Stop) or by /cancel.
++        const controller = new AbortController();
++        const onGone = () => controller.abort();
++        request.signal.addEventListener("abort", onGone, { once: true });
++        if (request.signal.aborted) controller.abort();
++
++        let settle: (result: ShellResult | null) => void = () => undefined;
++        const entry: Running = {
++          controller,
++          done: new Promise((resolve) => {
++            settle = resolve;
++          }),
++        };
++        if (runId) running.set(runId, entry);
++        else anonymous.add(entry);
++        try {
++          const { shell } = await workspaces.for(body.botId);
++          const result = await shell.run({
++            command: body.command,
++            ...(timeout.timeoutMs !== undefined
++              ? { timeoutMs: timeout.timeoutMs }
++              : {}),
++            signal: controller.signal,
++          });
++          settle(result);
++          return json(result);
++        } catch (error) {
++          settle(null);
++          return json(
++            { error: describe(error, "The command could not be run.") },
++            500,
++          );
++        } finally {
++          request.signal.removeEventListener("abort", onGone);
++          if (runId) running.delete(runId);
++          else anonymous.delete(entry);
++        }
++      }
++
++      /*
++       * A Stop by name, answered once the command has ended.
++       *
++       * The computer also drops its request, which reaches the command through `request.signal`.
++       * This is the second way in, and the one the computer waits on: it answers after the process
++       * group is gone, so the computer lets go of the wheel no earlier than it did when the command
++       * ran in its own process.
++       */
++      if (url.pathname === "/cancel" && request.method === "POST") {
++        const body = (await readBody(request)) as { runId?: unknown } | null;
++        if (typeof body?.runId !== "string" || !RUN_ID.test(body.runId)) {
++          return json({ error: "That is not a usable run id." }, 400);
++        }
++        const entry = running.get(body.runId);
++        if (!entry) {
++          rememberCancel(body.runId);
++          return json({ stopped: false });
++        }
++        entry.controller.abort();
++        const result = await entry.done;
++        return json({ stopped: true, result });
++      }
++
++      return json({ error: "Not found." }, 404);
++    },
++  });
++
++  // Only this uid may connect. The directory is 700 as well; this holds if it was made by someone else.
++  await chmod(socketPath, 0o600);
++
++  let stopping: Promise<void> | null = null;
++  const stop = () => {
++    stopping ??= (async () => {
++      const all = [...running.values(), ...anonymous];
++      for (const entry of all) entry.controller.abort();
++      await Promise.race([
++        Promise.all(all.map((entry) => entry.done)),
++        Bun.sleep(5_000),
++      ]);
++      await server.stop(true);
++      await rm(socketPath, { force: true });
++    })();
++    return stopping;
++  };
++
++  return { socketPath, stop };
++}
++
++/** The same check the computer makes before it says it is ready (index.ts `assertWritable`). */
++async function assertWritable(directory: string): Promise<void> {
++  const probe = join(directory, `.openbot-write-probe-${process.pid}`);
++  try {
++    await mkdir(directory, { recursive: true });
++    await writeFile(probe, "");
++    await rm(probe, { force: true });
++  } catch (error) {
++    console.error(
++      `The workspace at ${directory} is not writable by uid ${process.getuid?.() ?? "unknown"}: ${String(error)}. ` +
++        "Commands run there and write there, so the command runner refuses to start instead.",
++    );
++    process.exit(1);
++  }
++}
++
++if (import.meta.main) {
++  const socketPath = process.env.COMPUTER_EXEC_SOCKET?.trim();
++  if (!socketPath) {
++    console.error(
++      "COMPUTER_EXEC_SOCKET is not set: the command runner needs the unix socket the computer forwards to.",
++    );
++    process.exit(1);
++  }
++  const workspaceRoot = process.env.WORKSPACE_DIR?.trim() || "/workspace";
++  const separate =
++    process.env.COMPUTER_SEPARATE_WORKSPACES?.trim().toLowerCase() === "on";
++  await assertWritable(workspaceRoot);
++  // Commands go through the same policy filter, chained to the same upstream proxy, as they did in
++  // the computer's container. Started before the socket exists, so no command runs without it.
++  await startEgressFilter({ forShell: true });
++  let server: ExecServer;
++  try {
++    server = await startExecServer({ socketPath, workspaceRoot, separate });
++  } catch (error) {
++    console.error(describe(error, "The command runner could not start."));
++    process.exit(1);
++  }
++  console.info(
++    JSON.stringify({
++      type: "computer-exec-listening",
++      socket: socketPath,
++      workspace: workspaceRoot,
++      separateWorkspaces: separate,
++      uid: process.getuid?.() ?? null,
++    }),
++  );
++  for (const signal of ["SIGTERM", "SIGINT"] as const) {
++    process.on(signal, () => {
++      void server.stop().then(() => process.exit(0));
++    });
++  }
++}
+diff -ruN a/src/index.ts b/src/index.ts
+--- a/src/index.ts	2026-10-28 00:00:00
++++ b/src/index.ts	2026-10-28 00:00:00
+@@ -85,6 +85,7 @@
+ import { startWindowCast } from "./window-cast";
+ import { within } from "./window-geometry";
+ import { pickShownPage } from "./live-page";
++import { createRemoteShell } from "./remote-shell";
+ import { createXInput } from "./x-input";
+ import { applyWebBotAuthPush } from "./web-bot-auth";
+ import {
+@@ -287,6 +288,21 @@
+   process.env.COMPUTER_SEPARATE_WORKSPACES?.trim().toLowerCase() === "on",
+ );
+ 
++/*
++ * OpenDuet patch 0008: commands run in the computer-exec container (exec-server.ts), which has the
++ * workspace and nothing else of this one: no browser profiles, no token, no X display. Set, every
++ * `/exec` goes there and never runs here, even when the runner is down. Unset, commands run in this
++ * process as before.
++ */
++const EXEC_SOCKET = process.env.COMPUTER_EXEC_SOCKET?.trim() || undefined;
++console.info(
++  JSON.stringify({
++    type: "computer-exec-mode",
++    mode: EXEC_SOCKET ? "separate-container" : "in-process",
++    ...(EXEC_SOCKET ? { socket: EXEC_SOCKET } : {}),
++  }),
++);
++
+ /**
+  * Who has the wheel, as a state machine in its own module.
+  *
+@@ -1463,8 +1479,11 @@
+         }
+         try {
+           // Rooted in the same folder the file tools use, so a command and a written file see one
+-          // directory rather than two.
+-          const { shell } = await workspaces.for(botId);
++          // directory rather than two. OpenDuet patch 0008: in the computer-exec container when
++          // COMPUTER_EXEC_SOCKET is set; it picks the same folder (workspaces.ts).
++          const { shell } = EXEC_SOCKET
++            ? { shell: createRemoteShell(EXEC_SOCKET, botId) }
++            : await workspaces.for(botId);
+           return json(
+             await shell.run({
+               command: body.command,
+diff -ruN a/src/remote-shell.ts b/src/remote-shell.ts
+--- a/src/remote-shell.ts	1970-01-01 08:00:00
++++ b/src/remote-shell.ts	2026-10-28 00:00:00
+@@ -0,0 +1,158 @@
++/**
++ * OpenDuet patch 0008: the computer's end of the command runner (exec-server.ts).
++ *
++ * The same `run` as shell.ts, so `/exec` keeps its shape: the wheel is checked before this is
++ * called and held until it returns, the timeout is the command's own, and a Stop ends the command.
++ *
++ * NEVER A FALLBACK. If the runner cannot be reached the command fails and says so. Running it in
++ * this process instead would put it back beside the browser profiles and this process's token,
++ * which is the thing the separate container exists to prevent, and nobody would notice.
++ */
++import { randomUUID } from "node:crypto";
++import type { ShellResult } from "./shell";
++
++/** shell.ts's bounds, mirrored to size the wait below; the runner applies the real ones. */
++const DEFAULT_TIMEOUT_MS = 120_000;
++const MIN_TIMEOUT_MS = 1_000;
++const MAX_TIMEOUT_MS = 600_000;
++
++/**
++ * How long past the command's own timeout the runner has to answer. A command that times out is
++ * killed and answered at once, so this only ever ends a runner that has stopped answering.
++ */
++const ANSWER_GRACE_MS = 30_000;
++
++/** How long a Stop waits for the runner to say the command has ended. */
++const CANCEL_WAIT_MS = 10_000;
++
++/**
++ * Bun names the failure in `code` (ENOENT, ECONNREFUSED); its message, "Was there a typo in the
++ * url or port?", points the reader at the wrong thing for a unix socket.
++ */
++function unreachableBecause(cause: unknown, socketPath: string): string {
++  const code = (cause as { code?: unknown } | null)?.code;
++  if (code === "ENOENT") return `ENOENT: there is no socket at ${socketPath}`;
++  if (code === "ECONNREFUSED") {
++    return `ECONNREFUSED: nothing is listening on ${socketPath}`;
++  }
++  if (typeof code === "string" && code) return `${code} on ${socketPath}`;
++  return cause instanceof Error ? cause.message : String(cause);
++}
++
++export class CommandRunnerUnreachableError extends Error {
++  constructor(cause: unknown, socketPath: string) {
++    super(
++      `The command runner is not reachable, so the command did not run (${unreachableBecause(cause, socketPath)}). Commands run in the computer-exec container; check that it is running.`,
++    );
++    this.name = "CommandRunnerUnreachableError";
++  }
++}
++
++function waitFor(timeoutMs: number | undefined): number {
++  const requested =
++    typeof timeoutMs === "number" && Number.isFinite(timeoutMs)
++      ? timeoutMs
++      : DEFAULT_TIMEOUT_MS;
++  return (
++    Math.min(Math.max(requested, MIN_TIMEOUT_MS), MAX_TIMEOUT_MS) +
++    ANSWER_GRACE_MS
++  );
++}
++
++/**
++ * A Stop by name, waited on until the runner says the command is gone (or CANCEL_WAIT_MS passes),
++ * so the wheel is released after the command ends, as it was when the command ran in this process.
++ */
++async function cancel(
++  socketPath: string,
++  runId: string,
++): Promise<ShellResult | null> {
++  try {
++    const response = await fetch("http://localhost/cancel", {
++      unix: socketPath,
++      method: "POST",
++      headers: { "content-type": "application/json" },
++      body: JSON.stringify({ runId }),
++      signal: AbortSignal.timeout(CANCEL_WAIT_MS),
++    });
++    const answer = (await response.json().catch(() => null)) as {
++      result?: ShellResult | null;
++    } | null;
++    return answer?.result ?? null;
++  } catch {
++    return null;
++  }
++}
++
++export function createRemoteShell(socketPath: string, botId: string) {
++  return {
++    async run(input: {
++      command: string;
++      timeoutMs?: number;
++      signal?: AbortSignal;
++    }): Promise<ShellResult> {
++      const runId = randomUUID();
++      const controller = new AbortController();
++      let silent = false;
++      const guard = setTimeout(() => {
++        silent = true;
++        controller.abort();
++      }, waitFor(input.timeoutMs));
++      const onStop = () => controller.abort();
++      input.signal?.addEventListener("abort", onStop, { once: true });
++      // As in shell.ts: a Stop that landed before this line is honoured too.
++      if (input.signal?.aborted) controller.abort();
++
++      // Dropping the request already reaches the command; this waits until it has ended.
++      const stopped = async (): Promise<ShellResult> => {
++        const ended = await cancel(socketPath, runId);
++        if (silent) {
++          throw new Error(
++            "The command runner did not answer in time, so the command was stopped.",
++          );
++        }
++        if (ended) return ended;
++        throw new Error("The command was stopped.");
++      };
++
++      try {
++        let response: Response;
++        try {
++          response = await fetch("http://localhost/exec", {
++            unix: socketPath,
++            method: "POST",
++            headers: { "content-type": "application/json" },
++            body: JSON.stringify({
++              botId,
++              command: input.command,
++              ...(input.timeoutMs !== undefined
++                ? { timeoutMs: input.timeoutMs }
++                : {}),
++              runId,
++            }),
++            signal: controller.signal,
++          });
++        } catch (error) {
++          if (controller.signal.aborted) return await stopped();
++          throw new CommandRunnerUnreachableError(error, socketPath);
++        }
++        const answer = (await response.json().catch(() => null)) as
++          | (ShellResult & { error?: undefined })
++          | { error?: unknown }
++          | null;
++        if (answer === null && controller.signal.aborted) return await stopped();
++        if (!response.ok || !answer || typeof answer.error === "string") {
++          // The runner answered and refused; its words are the error.
++          throw new Error(
++            (answer && typeof answer.error === "string" && answer.error) ||
++              `The command runner answered ${response.status}.`,
++          );
++        }
++        return answer as ShellResult;
++      } finally {
++        clearTimeout(guard);
++        input.signal?.removeEventListener("abort", onStop);
++      }
++    },
++  };
++}
+diff -ruN a/tests/exec-server.test.ts b/tests/exec-server.test.ts
+--- a/tests/exec-server.test.ts	1970-01-01 08:00:00
++++ b/tests/exec-server.test.ts	2026-10-28 00:00:00
+@@ -0,0 +1,320 @@
++import { afterEach, beforeEach, describe, expect, test } from "bun:test";
++import { existsSync } from "node:fs";
++import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { type ExecServer, startExecServer } from "../src/exec-server";
++import {
++  CommandRunnerUnreachableError,
++  createRemoteShell,
++} from "../src/remote-shell";
++
++/**
++ * OpenDuet patch 0008: the shell in a container of its own, reached over a unix socket.
++ *
++ * These run the real server on a real socket and real commands, so what is checked is what the
++ * computer's `/exec` gets back: the command ran in the Bot's folder without the computer's secrets,
++ * its timeout and a Stop still end it (and what it started), and a runner that is not there is an
++ * error rather than a command run somewhere else.
++ */
++
++let root: string;
++let socketPath: string;
++let server: ExecServer | undefined;
++
++const SECRET_ENV = {
++  PATH: process.env.PATH,
++  COMPUTER_TOKEN: "computer-token-must-not-pass",
++  HOME: "/root",
++};
++
++async function start(separate = true): Promise<ExecServer> {
++  server = await startExecServer({
++    socketPath,
++    workspaceRoot: join(root, "workspace"),
++    separate,
++    sourceEnv: SECRET_ENV,
++  });
++  return server;
++}
++
++function post(path: string, body: unknown, signal?: AbortSignal) {
++  return fetch(`http://localhost${path}`, {
++    unix: socketPath,
++    method: "POST",
++    headers: { "content-type": "application/json" },
++    body: JSON.stringify(body),
++    ...(signal ? { signal } : {}),
++  });
++}
++
++beforeEach(async () => {
++  root = await mkdtemp(join(tmpdir(), "exec-server-"));
++  // A directory the server has to create, as the compose volume's mountpoint is in a fresh container.
++  socketPath = join(root, "sock", "exec.sock");
++});
++
++afterEach(async () => {
++  await server?.stop();
++  server = undefined;
++  await rm(root, { recursive: true, force: true });
++});
++
++describe("a command through the runner", () => {
++  test("runs in its Bot's folder, with HOME there and no secret from the runner's environment", async () => {
++    await start();
++    const result = await createRemoteShell(socketPath, "sales").run({
++      command: 'pwd; echo "$HOME"; env; exit 3',
++    });
++    const folder = await realpath(join(root, "workspace", "computers", "sales"));
++    const [cwd, home] = result.stdout.split("\n");
++    expect(result.exitCode).toBe(3);
++    expect(result.timedOut).toBe(false);
++    expect(cwd).toBe(folder);
++    expect(await realpath(home ?? "")).toBe(folder);
++    expect(result.stdout).not.toContain("computer-token-must-not-pass");
++    expect(result.stdout).not.toContain("COMPUTER_TOKEN");
++  });
++
++  test("a computer serving one Bot keeps commands at the workspace root", async () => {
++    await start(false);
++    const result = await createRemoteShell(socketPath, "duet").run({
++      command: "pwd",
++    });
++    expect(result.stdout.trim()).toBe(await realpath(join(root, "workspace")));
++  });
++
++  test("its own timeout ends it, and what it started", async () => {
++    await start(false);
++    const started = Date.now();
++    const result = await createRemoteShell(socketPath, "duet").run({
++      command: "sleep 4 | cat; touch late-marker",
++      timeoutMs: 1_000,
++    });
++    expect(result.timedOut).toBe(true);
++    expect(Date.now() - started).toBeLessThan(3_500);
++    await Bun.sleep(4_000);
++    expect(existsSync(join(root, "workspace", "late-marker"))).toBe(false);
++  }, 15_000);
++
++  test("a command longer than Bun's 10 second idle limit still gets its answer", async () => {
++    // 15 s: past the point (about 12 s, measured) where Bun cuts an idle request that has no body.
++    // `/exec` is a POST with one, which Bun 1.3.6 and 1.4.3 did not cut either way; this holds the
++    // runner to that whatever Bun's default becomes.
++    await start(false);
++    const result = await createRemoteShell(socketPath, "duet").run({
++      command: "sleep 15; echo finished",
++      timeoutMs: 30_000,
++    });
++    expect(result.timedOut).toBe(false);
++    expect(result.exitCode).toBe(0);
++    expect(result.stdout.trim()).toBe("finished");
++  }, 30_000);
++});
++
++describe("a Stop", () => {
++  test("mid-command ends it, settles once it has ended, and it never writes", async () => {
++    await start(false);
++    const controller = new AbortController();
++    const timer = setTimeout(() => controller.abort(), 300);
++    const started = Date.now();
++    const outcome = await createRemoteShell(socketPath, "duet")
++      .run({
++        command: "sleep 3; touch stopped-marker",
++        timeoutMs: 20_000,
++        signal: controller.signal,
++      })
++      .then(
++        (result) => ({ result }),
++        (error: Error) => ({ error }),
++      );
++    clearTimeout(timer);
++    expect(Date.now() - started).toBeLessThan(2_500);
++    if ("result" in outcome) expect(outcome.result.timedOut).toBe(false);
++    else expect(outcome.error.message).toContain("stopped");
++    // Nothing is still running on the runner once the Stop has settled.
++    const health = (await (
++      await fetch("http://localhost/health", { unix: socketPath })
++    ).json()) as { running: number };
++    expect(health.running).toBe(0);
++    await Bun.sleep(3_500);
++    expect(existsSync(join(root, "workspace", "stopped-marker"))).toBe(false);
++  }, 15_000);
++
++  test("that landed before the call never starts the command", async () => {
++    await start(false);
++    await expect(
++      createRemoteShell(socketPath, "duet").run({
++        command: "touch early-marker",
++        signal: AbortSignal.abort(),
++      }),
++    ).rejects.toThrow("stopped");
++    await Bun.sleep(500);
++    expect(existsSync(join(root, "workspace", "early-marker"))).toBe(false);
++  });
++
++  test("by run id ends a command whose request is still open", async () => {
++    await start(false);
++    const running = post("/exec", {
++      botId: "duet",
++      command: "sleep 3; touch named-marker",
++      runId: "run-1",
++    });
++    await Bun.sleep(300);
++    const cancelled = (await (await post("/cancel", { runId: "run-1" })).json()) as {
++      stopped: boolean;
++      result: { timedOut: boolean; exitCode: number } | null;
++    };
++    expect(cancelled.stopped).toBe(true);
++    expect(cancelled.result?.timedOut).toBe(false);
++    expect(cancelled.result?.exitCode).not.toBe(0);
++    const answer = (await (await running).json()) as { exitCode: number };
++    expect(answer.exitCode).not.toBe(0);
++    await Bun.sleep(3_500);
++    expect(existsSync(join(root, "workspace", "named-marker"))).toBe(false);
++  }, 15_000);
++
++  test("by run id that arrives before the command is remembered, and the command is refused", async () => {
++    await start(false);
++    const cancelled = (await (await post("/cancel", { runId: "run-2" })).json()) as {
++      stopped: boolean;
++    };
++    expect(cancelled.stopped).toBe(false);
++    const answer = await post("/exec", {
++      botId: "duet",
++      command: "touch refused-marker",
++      runId: "run-2",
++    });
++    expect(answer.status).toBe(409);
++    await Bun.sleep(300);
++    expect(existsSync(join(root, "workspace", "refused-marker"))).toBe(false);
++  });
++});
++
++describe("what the runner refuses", () => {
++  test.each([
++    ["a bot id that is a path", { botId: "../etc", command: "touch bad-marker" }],
++    ["no bot id", { command: "touch bad-marker" }],
++    ["a blank command", { botId: "duet", command: "   " }],
++    ["a timeout below the shell's floor", { botId: "duet", command: "touch bad-marker", timeoutMs: 5 }],
++    ["a timeout that is not a number", { botId: "duet", command: "touch bad-marker", timeoutMs: "60000" }],
++    ["a run id with a separator", { botId: "duet", command: "touch bad-marker", runId: "a/b" }],
++  ])("%s, with a 400 and nothing run", async (_name, body) => {
++    await start(true);
++    const answer = await post("/exec", body);
++    expect(answer.status).toBe(400);
++    expect(existsSync(join(root, "workspace", "bad-marker"))).toBe(false);
++    expect(existsSync(join(root, "workspace", "computers"))).toBe(false);
++  });
++
++  test("a body that is not JSON, and an unknown path", async () => {
++    await start(false);
++    const garbled = await fetch("http://localhost/exec", {
++      unix: socketPath,
++      method: "POST",
++      body: "not json",
++    });
++    expect(garbled.status).toBe(400);
++    const unknown = await fetch("http://localhost/files/read", { unix: socketPath });
++    expect(unknown.status).toBe(404);
++  });
++
++  test("the runner's refusal reaches the computer as its own words", async () => {
++    await start(true);
++    await expect(
++      createRemoteShell(socketPath, "../etc").run({ command: "true" }),
++    ).rejects.toThrow("That is not a usable bot id.");
++  });
++});
++
++describe("the socket", () => {
++  test("only its owner may connect, in a directory only its owner may enter", async () => {
++    await start();
++    expect((await stat(socketPath)).mode & 0o777).toBe(0o600);
++    expect((await stat(join(root, "sock"))).mode & 0o777).toBe(0o700);
++  });
++
++  test("a socket left by a runner that was killed is replaced", async () => {
++    await mkdir(join(root, "sock"), { recursive: true });
++    const orphan = Bun.spawn(
++      [
++        process.execPath,
++        "-e",
++        "require('node:net').createServer().listen(process.env.SOCK); setInterval(() => {}, 1000);",
++      ],
++      { env: { ...process.env, SOCK: socketPath } },
++    );
++    for (let i = 0; i < 50 && !existsSync(socketPath); i++) await Bun.sleep(100);
++    orphan.kill("SIGKILL");
++    await orphan.exited;
++    expect(existsSync(socketPath)).toBe(true);
++
++    await start(false);
++    const result = await createRemoteShell(socketPath, "duet").run({
++      command: "echo again",
++    });
++    expect(result.stdout.trim()).toBe("again");
++  }, 15_000);
++
++  test("a file that is not a socket is left alone and the runner does not start", async () => {
++    await mkdir(join(root, "sock"), { recursive: true });
++    await writeFile(socketPath, "keep me");
++    await expect(start()).rejects.toThrow("is not a socket");
++    server = undefined;
++    expect(await Bun.file(socketPath).text()).toBe("keep me");
++  });
++
++  test("a second runner does not take the place of one that answers", async () => {
++    const first = await start(false);
++    await expect(
++      startExecServer({
++        socketPath,
++        workspaceRoot: join(root, "workspace"),
++        separate: false,
++      }),
++    ).rejects.toThrow("already answering");
++    server = first;
++    const result = await createRemoteShell(socketPath, "duet").run({
++      command: "echo still-first",
++    });
++    expect(result.stdout.trim()).toBe("still-first");
++  });
++
++  test("stopping the runner ends its commands and removes the socket", async () => {
++    const running = await start(false);
++    const pending = post("/exec", {
++      botId: "duet",
++      command: "sleep 30; touch shutdown-marker",
++    }).catch(() => null);
++    await Bun.sleep(300);
++    const started = Date.now();
++    await running.stop();
++    server = undefined;
++    await pending;
++    expect(Date.now() - started).toBeLessThan(6_000);
++    expect(existsSync(socketPath)).toBe(false);
++    expect(existsSync(join(root, "workspace", "shutdown-marker"))).toBe(false);
++  }, 15_000);
++});
++
++describe("a runner that is not there", () => {
++  test("is an error that says so, and nothing runs", async () => {
++    const shell = createRemoteShell(join(root, "absent", "exec.sock"), "duet");
++    const error = await shell.run({ command: "touch absent-marker" }).catch((e) => e);
++    expect(error).toBeInstanceOf(CommandRunnerUnreachableError);
++    expect((error as Error).message).toContain("not reachable");
++    expect((error as Error).message).toContain(join(root, "absent", "exec.sock"));
++    expect((error as Error).message).not.toContain("typo");
++    expect(existsSync(join(root, "workspace", "absent-marker"))).toBe(false);
++  });
++
++  test("comes back once it is started again", async () => {
++    const shell = createRemoteShell(socketPath, "duet");
++    await expect(shell.run({ command: "true" })).rejects.toBeInstanceOf(
++      CommandRunnerUnreachableError,
++    );
++    await start(false);
++    const result = await shell.run({ command: "echo back" });
++    expect(result.stdout.trim()).toBe("back");
++  });
++});

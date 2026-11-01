@@ -1,0 +1,20 @@
+# Keep secrets, databases and local state out of the build context.
+.env
+.env.*
+!.env.example
+data/
+files/
+node_modules/
+dist/
+coverage/
+test/
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.p8
+*.p12
+.DS_Store

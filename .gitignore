@@ -1,0 +1,56 @@
+# Local only: the spec, agent rules, plans, progress notes and demo media (see local/AGENT.md)
+local/
+
+# Agent working files: plans, worktrees, hand-offs and screenshots (local only, see local/AGENT.md)
+.pi/
+
+# OS / editors
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Secrets (never commit)
+OWNER-NOTES.md
+.env
+.env.*
+!.env.example
+backend/models.json
+*.p8
+*.p12
+
+# SQLite databases hold users' chats (never commit)
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+backend/data/
+
+# Backend build/runtime
+node_modules/
+backend/dist/
+backend/files/
+coverage/
+
+# Backups produced by scripts/backup.sh
+backups/
+
+# Simulator screenshots for milestone review (may show real mail and chats)
+docs/screens/
+
+# OpenDuet's computer data (profiles hold logins, workspace holds files)
+computer/profiles/
+computer/workspace/
+
+# iOS / Xcode
+ios/*.xcodeproj
+ios/*.xcworkspace
+DerivedData/
+ios/build/
+*.xcuserstate
+xcuserdata/
+*.ipa
+*.dSYM.zip

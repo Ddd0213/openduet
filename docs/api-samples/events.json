@@ -1,0 +1,41 @@
+{
+  "DuetEvent": [
+    { "id": 101, "type": "status", "channelId": "ch_main", "createdAt": "2026-10-25T08:50:01.000Z", "payload": { "runId": "run_9", "taskId": null, "status": "searching_email" } },
+    { "id": 102, "type": "status", "channelId": "ch_main", "createdAt": "2026-10-25T08:50:05.000Z", "payload": { "runId": "run_9", "taskId": null, "status": null } },
+    { "id": 103, "type": "typing", "channelId": "ch_main", "createdAt": "2026-10-25T08:50:02.000Z", "payload": { "runId": "run_9", "taskId": null, "typing": true } },
+    { "id": 104, "type": "message", "channelId": "ch_main", "createdAt": "2026-10-25T08:50:04.000Z", "payload": { "message": {
+      "id": "msg_assistant", "channelId": "ch_main", "taskId": null, "role": "assistant", "kind": "text", "text": "On it.", "status": "sent", "clientId": null,
+      "reactions": [], "payload": { "skill": null, "attachments": [] }, "createdAt": "2026-10-25T08:50:04.000Z", "updatedAt": "2026-10-25T08:50:04.000Z" } } },
+    { "id": 105, "type": "message_deleted", "channelId": "ch_main", "createdAt": "2026-10-25T08:50:04.000Z", "payload": { "messageId": "msg_old" } },
+    { "id": 106, "type": "task", "channelId": "ch_main", "createdAt": "2026-10-25T08:50:04.000Z", "payload": { "task": {
+      "id": "task_1", "channelId": "ch_main", "title": "Conference sign-up", "status": "working", "source": "user", "latestUpdate": null,
+      "updateCount": 0, "schedule": null, "archived": false, "createdAt": "2026-10-25T08:50:04.000Z", "updatedAt": "2026-10-25T08:50:04.000Z" } } },
+    { "id": 107, "type": "approval", "channelId": "ch_main", "createdAt": "2026-10-25T09:05:00.000Z", "payload": { "approval": {
+      "id": "apr_1", "kind": "email", "status": "pending", "version": 3, "expiresAt": null, "taskId": "task_2", "messageId": "msg_approval",
+      "preview": { "kind": "email", "app": "Gmail", "to": ["sam@example.com"], "cc": [], "subject": "Re: Northfield renewal", "body": "Hi Sam, so excited!", "attachments": [] },
+      "result": null, "changedFields": ["body"], "updatedAt": "2026-10-25T09:05:00.000Z" } } },
+    { "id": 108, "type": "channel", "channelId": "ch_q4", "createdAt": "2026-10-25T09:12:00.000Z", "payload": { "channel": {
+      "id": "ch_q4", "isMain": false, "name": "Q4 planning", "icon": "chart", "colorHex": "#6290C2", "purpose": "", "archived": false,
+      "unreadCount": 1, "lastReadAt": null, "lastMessageAt": "2026-10-25T09:12:00.000Z", "createdAt": "2026-10-25T09:00:00.000Z" } } },
+    { "id": 109, "type": "artifact", "channelId": "ch_main", "createdAt": "2026-10-25T09:01:00.000Z", "payload": {
+      "artifact": { "id": "art_2", "channelId": "ch_main", "type": "dashboard", "title": "Make an AI2SQL funnel dashboard", "status": "building", "sourceCount": 0,
+        "refreshSchedule": null, "pinnedToTabBar": false, "createdAt": "2026-10-25T09:00:00.000Z", "updatedAt": "2026-10-25T09:01:00.000Z" },
+      "buildStatus": { "key": "build.waking_workspace" } } },
+    { "id": 110, "type": "usage", "channelId": null, "createdAt": "2026-10-25T08:50:06.000Z", "payload": { "usage": {
+      "session": { "used": 18233, "limit": 3000000, "resetsAt": "2026-10-25T13:50:00.000Z" },
+      "weekly": { "used": 18233, "limit": 30000000, "resetsAt": "2026-11-01T08:50:00.000Z" },
+      "fullReset": { "available": true, "expiresAt": "2026-11-01T06:59:59.000Z" }, "limited": false, "resumesAt": null } } },
+    { "id": 111, "type": "computer", "channelId": null, "createdAt": "2026-10-25T08:51:00.000Z", "payload": { "computer": {
+      "available": true, "browser": "ready", "controller": "user", "url": "https://events.example.com/register", "domain": "events.example.com", "blocked": null } } },
+    { "id": 112, "type": "notification", "channelId": "ch_main", "createdAt": "2026-10-25T09:05:01.000Z", "payload": {
+      "title": { "key": "notify.title" }, "body": { "text": "Your prep for Launch review is ready." }, "route": "duet://tasks/task_2" } },
+    { "id": 115, "type": "notification", "channelId": "ch_main", "createdAt": "2026-10-25T23:10:00.000Z", "payload": {
+      "title": { "key": "notify.title" }, "body": { "key": "notify.message" }, "route": "duet://channels/ch_main?message=msg_checkin",
+      "collapseId": "message-msg_checkin", "passive": true } },
+    { "id": 120, "type": "task_deleted", "channelId": "ch_main", "createdAt": "2026-10-25T12:00:00.000Z", "payload": { "taskId": "task_6" } },
+    { "id": 121, "type": "channel_deleted", "channelId": "ch_q4", "createdAt": "2026-10-25T12:01:00.000Z", "payload": { "channelId": "ch_q4" } },
+    { "id": 113, "type": "done", "channelId": "ch_main", "createdAt": "2026-10-25T08:50:06.000Z", "payload": { "runId": "run_9", "taskId": null, "status": "completed", "error": null } },
+    { "id": 114, "type": "done", "channelId": "ch_main", "createdAt": "2026-10-25T10:31:00.000Z", "payload": { "runId": "run_10", "taskId": null, "status": "failed",
+      "error": { "key": "system.model_error", "params": { "status": { "type": "number", "value": 401 } } } } }
+  ]
+}

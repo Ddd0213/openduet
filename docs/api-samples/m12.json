@@ -1,0 +1,507 @@
+{
+  "ModelsState": [
+    {
+      "providers": [
+        {
+          "id": "prv_anthropic",
+          "kind": "anthropic",
+          "protocol": "anthropic",
+          "name": "Anthropic",
+          "baseUrl": "https://api.anthropic.com",
+          "auth": "x-api-key",
+          "key": {
+            "set": true,
+            "last4": "9xQa"
+          },
+          "headers": [],
+          "status": "active",
+          "error": null,
+          "imported": false,
+          "modelCount": 2,
+          "createdAt": "2026-11-01T09:00:00.000Z"
+        },
+        {
+          "id": "prv_gemini",
+          "kind": "gemini",
+          "protocol": "openai",
+          "name": "Google Gemini",
+          "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+          "auth": null,
+          "key": {
+            "set": true,
+            "last4": "k3Zt"
+          },
+          "headers": [],
+          "status": "active",
+          "error": null,
+          "imported": false,
+          "modelCount": 2,
+          "createdAt": "2026-11-01T09:00:00.000Z"
+        },
+        {
+          "id": "prv_gateway",
+          "kind": "custom",
+          "protocol": "anthropic",
+          "name": "gateway",
+          "baseUrl": "https://llm.example.com",
+          "auth": "bearer",
+          "key": {
+            "set": true,
+            "last4": "7Hc2"
+          },
+          "headers": [
+            {
+              "name": "X-Team",
+              "value": "shop"
+            }
+          ],
+          "status": "failed",
+          "error": "the key was refused",
+          "imported": true,
+          "modelCount": 1,
+          "createdAt": "2026-11-01T09:00:00.000Z"
+        }
+      ],
+      "models": [
+        {
+          "id": "mdl_opus",
+          "providerId": "prv_anthropic",
+          "purpose": "chat",
+          "modelId": "claude-opus-4-6",
+          "label": "Claude Opus 4.6",
+          "contextWindow": 200000,
+          "maxOutputTokens": 64000,
+          "thinkingLevels": [
+            "off",
+            "low",
+            "medium",
+            "high",
+            "max"
+          ],
+          "thinkingFormat": "effort",
+          "defaultThinking": "high",
+          "tools": true,
+          "vision": true,
+          "serverWebTools": true,
+          "promptCaching": true,
+          "source": "models.dev",
+          "edited": [],
+          "createdAt": "2026-11-01T09:00:00.000Z"
+        },
+        {
+          "id": "mdl_sonnet45",
+          "providerId": "prv_anthropic",
+          "purpose": "chat",
+          "modelId": "claude-sonnet-4-5",
+          "label": "Sonnet (fast)",
+          "contextWindow": 200000,
+          "maxOutputTokens": 64000,
+          "thinkingLevels": [
+            "off",
+            "medium"
+          ],
+          "thinkingFormat": "budget",
+          "defaultThinking": null,
+          "tools": true,
+          "vision": true,
+          "serverWebTools": true,
+          "promptCaching": true,
+          "source": "models.dev",
+          "edited": [
+            "label"
+          ],
+          "createdAt": "2026-11-01T09:00:00.000Z"
+        },
+        {
+          "id": "mdl_flash",
+          "providerId": "prv_gemini",
+          "purpose": "chat",
+          "modelId": "gemini-2.5-flash",
+          "label": "Gemini 2.5 Flash",
+          "contextWindow": 1048576,
+          "maxOutputTokens": 65536,
+          "thinkingLevels": [
+            "off",
+            "low",
+            "medium",
+            "high"
+          ],
+          "thinkingFormat": "effort",
+          "defaultThinking": null,
+          "tools": true,
+          "vision": true,
+          "serverWebTools": false,
+          "promptCaching": false,
+          "source": "models.dev",
+          "edited": [],
+          "createdAt": "2026-11-01T09:00:00.000Z"
+        },
+        {
+          "id": "mdl_live",
+          "providerId": "prv_gemini",
+          "purpose": "realtime",
+          "modelId": "gemini-live-2.5-flash-preview",
+          "label": "Gemini Live 2.5 Flash",
+          "contextWindow": 1048576,
+          "maxOutputTokens": 8192,
+          "thinkingLevels": [],
+          "thinkingFormat": "none",
+          "defaultThinking": null,
+          "tools": true,
+          "vision": false,
+          "serverWebTools": false,
+          "promptCaching": false,
+          "source": "models.dev",
+          "edited": [],
+          "createdAt": "2026-11-01T09:00:00.000Z"
+        },
+        {
+          "id": "mdl_gw",
+          "providerId": "prv_gateway",
+          "purpose": "chat",
+          "modelId": "claude-haiku-4-5",
+          "label": "claude-haiku-4-5",
+          "contextWindow": 200000,
+          "maxOutputTokens": 8192,
+          "thinkingLevels": [
+            "off",
+            "low",
+            "medium",
+            "high"
+          ],
+          "thinkingFormat": "effort",
+          "defaultThinking": null,
+          "tools": true,
+          "vision": false,
+          "serverWebTools": false,
+          "promptCaching": false,
+          "source": "imported",
+          "edited": [],
+          "createdAt": "2026-11-01T09:00:00.000Z"
+        }
+      ],
+      "defaults": {
+        "defaultModelId": "mdl_opus",
+        "defaultThinking": "medium",
+        "utilityModelId": "mdl_flash"
+      },
+      "configured": true
+    },
+    {
+      "providers": [],
+      "models": [],
+      "defaults": {
+        "defaultModelId": null,
+        "defaultThinking": null,
+        "utilityModelId": null
+      },
+      "configured": false
+    }
+  ],
+  "ModelProviderResponse": {
+    "provider": {
+      "id": "prv_anthropic",
+      "kind": "anthropic",
+      "protocol": "anthropic",
+      "name": "Anthropic",
+      "baseUrl": "https://api.anthropic.com",
+      "auth": "x-api-key",
+      "key": {
+        "set": true,
+        "last4": "9xQa"
+      },
+      "headers": [],
+      "status": "active",
+      "error": null,
+      "imported": false,
+      "modelCount": 2,
+      "createdAt": "2026-11-01T09:00:00.000Z"
+    }
+  },
+  "CreateModelProviderRequest": [
+    {
+      "kind": "anthropic",
+      "key": "sk-ant-example"
+    },
+    {
+      "kind": "custom",
+      "protocol": "openai",
+      "name": "Home gateway",
+      "baseUrl": "https://llm.example.com/v1",
+      "key": "gw-example",
+      "headers": [
+        {
+          "name": "X-Team",
+          "value": "shop"
+        }
+      ]
+    }
+  ],
+  "UpdateModelProviderRequest": [
+    {
+      "key": "sk-ant-new-example"
+    },
+    {
+      "name": "Work gateway",
+      "auth": "bearer"
+    }
+  ],
+  "RemoteModelList": {
+    "models": [
+      {
+        "modelId": "claude-haiku-4-5",
+        "label": "Claude Haiku 4.5",
+        "contextWindow": 200000,
+        "maxOutputTokens": 64000,
+        "thinkingLevels": [
+          "off",
+          "medium"
+        ],
+        "thinkingFormat": "budget",
+        "tools": true,
+        "vision": true,
+        "realtime": false,
+        "source": "models.dev",
+        "addedAs": null
+      },
+      {
+        "modelId": "claude-opus-4-6",
+        "label": "Claude Opus 4.6",
+        "contextWindow": 200000,
+        "maxOutputTokens": 64000,
+        "thinkingLevels": [
+          "off",
+          "low",
+          "medium",
+          "high",
+          "max"
+        ],
+        "thinkingFormat": "effort",
+        "tools": true,
+        "vision": true,
+        "realtime": false,
+        "source": "models.dev",
+        "addedAs": "mdl_opus"
+      },
+      {
+        "modelId": "my-finetune",
+        "label": "my-finetune",
+        "contextWindow": 128000,
+        "maxOutputTokens": 8192,
+        "thinkingLevels": [],
+        "thinkingFormat": "none",
+        "tools": true,
+        "vision": false,
+        "realtime": false,
+        "source": "default",
+        "addedAs": null
+      }
+    ]
+  },
+  "CreateModelEntryRequest": [
+    {
+      "providerId": "prv_gateway",
+      "modelId": "claude-haiku-4-5"
+    },
+    {
+      "providerId": "prv_gemini",
+      "modelId": "gemini-live-2.5-flash-preview",
+      "label": "Live",
+      "purpose": "realtime"
+    }
+  ],
+  "CreateModelEntriesRequest": {
+    "providerId": "prv_anthropic",
+    "modelIds": [
+      "claude-haiku-4-5",
+      "claude-sonnet-4-5"
+    ]
+  },
+  "UpdateModelEntryRequest": [
+    {
+      "label": "Sonnet (fast)"
+    },
+    {
+      "thinkingLevels": [
+        "off",
+        "low",
+        "medium",
+        "high"
+      ],
+      "thinkingFormat": "effort",
+      "defaultThinking": null
+    },
+    {
+      "contextWindow": 1000000,
+      "maxOutputTokens": 32000,
+      "tools": true,
+      "vision": false
+    }
+  ],
+  "ModelEntryResponse": {
+    "model": {
+      "id": "mdl_sonnet45",
+      "providerId": "prv_anthropic",
+      "purpose": "chat",
+      "modelId": "claude-sonnet-4-5",
+      "label": "Sonnet (fast)",
+      "contextWindow": 200000,
+      "maxOutputTokens": 64000,
+      "thinkingLevels": [
+        "off",
+        "medium"
+      ],
+      "thinkingFormat": "budget",
+      "defaultThinking": null,
+      "tools": true,
+      "vision": true,
+      "serverWebTools": true,
+      "promptCaching": true,
+      "source": "models.dev",
+      "edited": [
+        "label"
+      ],
+      "createdAt": "2026-11-01T09:00:00.000Z"
+    }
+  },
+  "UpdateModelDefaultsRequest": [
+    {
+      "defaultModelId": "mdl_sonnet45"
+    },
+    {
+      "defaultThinking": "high",
+      "utilityModelId": null
+    }
+  ],
+  "ChannelList": {
+    "channels": [
+      {
+        "id": "ch_shop",
+        "isMain": false,
+        "name": "Bike shop",
+        "icon": "checkbox",
+        "colorHex": "#E69F4E",
+        "purpose": "Orders and suppliers",
+        "archived": false,
+        "unreadCount": 0,
+        "lastReadAt": null,
+        "lastMessageAt": null,
+        "createdAt": "2026-10-27T08:00:00.000Z",
+        "soulExtra": "",
+        "useSharedMemory": true,
+        "modelId": "mdl_sonnet45",
+        "thinkingLevel": "off"
+      }
+    ]
+  },
+  "UpdateChannelRequest": [
+    {
+      "modelId": "mdl_flash",
+      "thinkingLevel": "low"
+    },
+    {
+      "modelId": null,
+      "thinkingLevel": null
+    }
+  ],
+  "MessagePage": {
+    "messages": [
+      {
+        "id": "msg_err",
+        "channelId": "ch_shop",
+        "taskId": null,
+        "role": "system",
+        "text": "",
+        "status": "sent",
+        "clientId": null,
+        "reactions": [],
+        "stopped": false,
+        "createdAt": "2026-11-01T09:00:05.000Z",
+        "updatedAt": "2026-11-01T09:00:05.000Z",
+        "kind": "model_error",
+        "payload": {
+          "phrase": {
+            "key": "system.model_error",
+            "params": {
+              "status": {
+                "type": "number",
+                "value": 529
+              }
+            }
+          },
+          "modelId": "mdl_opus",
+          "modelLabel": "Claude Opus 4.6",
+          "runId": "run_9",
+          "retry": true,
+          "state": "open"
+        }
+      },
+      {
+        "id": "msg_err_none",
+        "channelId": "ch_main",
+        "taskId": null,
+        "role": "system",
+        "text": "",
+        "status": "sent",
+        "clientId": null,
+        "reactions": [],
+        "stopped": false,
+        "createdAt": "2026-11-01T09:00:05.000Z",
+        "updatedAt": "2026-11-01T09:00:05.000Z",
+        "kind": "model_error",
+        "payload": {
+          "phrase": {
+            "key": "system.no_model"
+          },
+          "modelId": null,
+          "modelLabel": null,
+          "runId": "run_10",
+          "retry": false,
+          "state": "open"
+        }
+      }
+    ],
+    "hasMore": false
+  },
+  "MessageActionRequest": [
+    {
+      "action": "retry"
+    },
+    {
+      "action": "retry",
+      "modelId": "mdl_flash"
+    }
+  ],
+  "MessageActionResponse": {
+    "message": {
+      "id": "msg_err",
+      "channelId": "ch_shop",
+      "taskId": null,
+      "role": "system",
+      "text": "",
+      "status": "sent",
+      "clientId": null,
+      "reactions": [],
+      "stopped": false,
+      "createdAt": "2026-11-01T09:00:05.000Z",
+      "updatedAt": "2026-11-01T09:00:05.000Z",
+      "kind": "model_error",
+      "payload": {
+        "phrase": {
+          "key": "system.model_error",
+          "params": {
+            "status": {
+              "type": "number",
+              "value": 529
+            }
+          }
+        },
+        "modelId": "mdl_opus",
+        "modelLabel": "Claude Opus 4.6",
+        "runId": "run_9",
+        "retry": true,
+        "state": "retrying"
+      }
+    }
+  }
+}

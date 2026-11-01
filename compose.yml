@@ -1,0 +1,359 @@
+# OpenDuet (self-hosted): backend, OpenDuet's computer and its egress proxy.
+#
+# Start with ./scripts/setup.sh. It writes backend/.env and links it as ./.env, so compose reads the
+# same file for ${...} interpolation (used to hand the computer and egress only what they need) and
+# for the backend's env_file. Access modes are set in backend/.env by setup.sh:
+#   COMPOSE_FILE=compose.yml:compose.lan.yml  LAN or Tailscale: backend publishes ${BIND_ADDR}:${PORT}
+#   COMPOSE_PROFILES=caddy                    domain + automatic HTTPS: caddy publishes 80/443
+#   COMPOSE_PROFILES=tunnel                   Cloudflare Tunnel: nothing is published
+# This file alone publishes no port.
+#
+# The computer service builds CopilotKit/OpenBot's agent-computer (MIT) at the commit below with our
+# patches (computer/Dockerfile, computer/patches/); see THIRD_PARTY_NOTICES.md.
+name: openduet
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  backend:
+    image: ${DUET_IMAGE_PREFIX:-openduet}-backend:${DUET_VERSION:-local}
+    build:
+      context: ./backend
+    env_file: backend/.env
+    environment:
+      # Container paths on the named volumes, regardless of what `bun run dev` uses on the host.
+      DATABASE_URL: file:/data/db/duet.db
+      FILES_DIR: /data/files
+      COMPUTER_URL: http://computer:4100
+      ALLOW_FAKE_IP_RANGE: ${ALLOW_FAKE_IP_RANGE:-auto}
+    volumes:
+      - backend-db:/data/db
+      - backend-files:/data/files
+      - backend-artifacts:/data/artifacts
+    networks: [internal, public]
+    depends_on:
+      computer:
+        condition: service_healthy
+        # M20: the computer is optional (compose.no-computer.yml, setup.sh --computer off); when it
+        # isn't deployed the backend starts without it (Compose 2.20+).
+        required: false
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    pids_limit: 256
+    stop_grace_period: 30s
+    restart: unless-stopped
+    healthcheck:
+      # Database answers, the API answers on PORT, the computer answers /health (src/cli/health.ts).
+      test: ["CMD", "bun", "src/cli/health.ts"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    logging: *logging
+
+  computer:
+    image: ${DUET_IMAGE_PREFIX:-openduet}-computer:${DUET_VERSION:-local}
+    build:
+      # computer/Dockerfile: OpenBot's agent-computer at the pinned commit (the `upstream` context)
+      # plus computer/patches (whole-window live screen, M20b), git, python3, unpdf and OfficeCLI.
+      context: ./computer
+      additional_contexts:
+        upstream: https://github.com/CopilotKit/OpenBot.git#da9a3caf5784074baa779110dd7e9d1338c8871b
+    # Only what the computer needs. Model, Composio, search and push keys never enter this
+    # container (no env_file), nor computer-exec, where OpenDuet's shell runs.
+    environment:
+      COMPUTER_TOKEN: ${COMPUTER_TOKEN:?COMPUTER_TOKEN is empty; run ./scripts/setup.sh (it writes backend/.env and links it as ./.env)}
+      COMPUTER_BOT_ID: ${COMPUTER_BOT_ID:-duet}
+      # M28: computer_exec's commands run in computer-exec (below), reached on this socket; the
+      # computer still checks the token and who has the wheel first. Set, a command never runs in
+      # this container, even while computer-exec is down (it fails and says so).
+      COMPUTER_EXEC_SOCKET: /run/computer-exec/exec.sock
+      # headless or headed (Xvfb), chosen by setup.sh --browser; the backend reads the same value
+      # from backend/.env and tells the app.
+      COMPUTER_BROWSER_MODE: ${COMPUTER_BROWSER_MODE:-headless}
+      # landscape (the default) or portrait; setup.sh --browser-screen. Headed (M20b): the virtual
+      # screen the whole Chrome window fills, 1280x800 or 860x1600. Headless (M27): the page,
+      # 1280x800 at scale 1 or 430x660 CSS px at scale 2.
+      COMPUTER_BROWSER_SCREEN: ${COMPUTER_BROWSER_SCREEN:-landscape}
+      # The browser closes after this long idle (the container stays); setup.sh --browser-idle.
+      COMPUTER_BROWSER_IDLE_MS: ${COMPUTER_BROWSER_IDLE_MS:-1800000}
+      # M28: Chromium runs with its own sandbox (no --no-sandbox), which the seccomp profile below
+      # allows. `off` only for a host whose kernel refuses unprivileged user namespaces (the
+      # computer's log then says "sandbox": "off"); the browser does not start there otherwise.
+      COMPUTER_SANDBOX: ${COMPUTER_SANDBOX:-on}
+      # M28: no Bun transpiler cache for the server. HOME is a tmpfs, so the cache started empty at
+      # every start anyway, and on tmpfs it counted against mem_limit (8.7 MB measured). Commands
+      # from computer_exec don't get this variable (shell.ts passes an allow-list).
+      BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0"
+      # agent-computer refuses to go online until an API server pushes an egress policy; we push
+      # none and filter with the egress proxy below instead (both layers apply).
+      EGRESS_POLICY_REQUIRED: "0"
+      # Chromium's proxy (agent-computer reads EGRESS_PROXY_DEFAULT) ...
+      EGRESS_PROXY_DEFAULT: ${EGRESS_PROXY_DEFAULT:-http://egress:3128}
+      # ... and the same proxy for curl, git, bun, pip and friends run from the shell.
+      HTTP_PROXY: ${EGRESS_PROXY_DEFAULT:-http://egress:3128}
+      HTTPS_PROXY: ${EGRESS_PROXY_DEFAULT:-http://egress:3128}
+      http_proxy: ${EGRESS_PROXY_DEFAULT:-http://egress:3128}
+      https_proxy: ${EGRESS_PROXY_DEFAULT:-http://egress:3128}
+      NO_PROXY: localhost,127.0.0.1,::1
+      no_proxy: localhost,127.0.0.1,::1
+    volumes:
+      - computer-profiles:/profiles
+      - computer-workspace:/workspace
+      # Read-only: the computer only connects (a unix socket on a read-only mount still accepts).
+      - exec-socket:/run/computer-exec:ro
+    # Internal network only: its peers are the backend and egress, and it has no route out.
+    networks: [internal]
+    depends_on:
+      egress:
+        condition: service_healthy
+      computer-init:
+        condition: service_completed_successfully
+      # Started, not healthy: the computer doesn't need it to start, and a command sent in the
+      # second before it listens fails with "not reachable" rather than running here.
+      computer-exec:
+        condition: service_started
+    init: true
+    # M28: uid 10003 (computer/Dockerfile), no capabilities, and a read-only image. Writable: the
+    # two volumes, /tmp (Chromium's shared memory goes here: --disable-dev-shm-usage) and HOME
+    # (Chromium's fontconfig and NSS caches), both tmpfs and gone at restart.
+    user: "10003:10003"
+    read_only: true
+    tmpfs:
+      - /tmp:size=1g,mode=1777
+      - /home/computer:size=64m,uid=10003,gid=10003,mode=0700
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      # Docker's default seccomp profile plus what Chromium's sandbox needs: new user, pid and net
+      # namespaces and chroot inside them (computer/seccomp-chrome.json says where it came from).
+      # No capability is added; without this profile the browser refuses to start.
+      - seccomp=./computer/seccomp-chrome.json
+    shm_size: 1gb
+    mem_limit: 2g
+    pids_limit: 512
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "--noproxy", "*", "-o", "/dev/null", "http://127.0.0.1:4100/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging: *logging
+
+  computer-init:
+    # M28: runs before every start of the computer and exits. Volumes made before M28 belong to
+    # root, and the computer (uid 10003 now) refuses to start on a directory it can't write. This
+    # hands every file that isn't 10003's to 10003 (symlinks themselves, never their targets), and
+    # does nothing once there is nothing left to hand over. A service rather than a one-time
+    # command, so a file a root shell or a restore left behind is fixed at the next start, and
+    # nobody has to remember a migration step. Root with only CHOWN (change the owner) and
+    # DAC_READ_SEARCH (walk directories 10003 made private), no network, read-only image.
+    image: ${DUET_IMAGE_PREFIX:-openduet}-computer:${DUET_VERSION:-local}
+    user: "0:0"
+    command:
+      - sh
+      - -c
+      - >-
+        set -e;
+        todo=$$(find /profiles /workspace \( ! -user 10003 -o ! -group 10003 \) | wc -l);
+        [ "$$todo" -eq 0 ] || find /profiles /workspace \( ! -user 10003 -o ! -group 10003 \) -exec chown -h 10003:10003 {} +;
+        echo "computer-init: $$todo paths handed to uid 10003"
+    volumes:
+      - computer-profiles:/profiles
+      - computer-workspace:/workspace
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_READ_SEARCH]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 64
+    restart: "no"
+    healthcheck:
+      disable: true
+    logging: *logging
+
+  computer-exec:
+    # M28: where computer_exec's commands run (computer/patches/0008: `bun src/exec-server.ts`,
+    # shell.ts behind a unix socket). Same image and user as the computer, but it mounts only
+    # /workspace and the socket's volume: no browser profiles, no COMPUTER_TOKEN, no X display or
+    # Chromium socket, and Docker's default seccomp profile (it runs no sandboxed browser). The
+    # computer forwards each command here; a command can still reach the backend and egress on
+    # the internal network, as it did from the computer.
+    image: ${DUET_IMAGE_PREFIX:-openduet}-computer:${DUET_VERSION:-local}
+    command: ["bun", "src/exec-server.ts"]
+    # The workspace folder rules (src/workspaces.ts) must match the computer's: if you ever set
+    # COMPUTER_SEPARATE_WORKSPACES on one of them, set it on both.
+    environment:
+      COMPUTER_EXEC_SOCKET: /run/computer-exec/exec.sock
+      # shell.ts passes only allow-listed env to a command; these (set in computer/Dockerfile)
+      # keep OfficeCLI from updating itself, installing things or leaving a resident process.
+      COMPUTER_SHELL_ENV: OFFICECLI_SKIP_UPDATE,OFFICECLI_NO_AUTO_INSTALL,OFFICECLI_NO_AUTO_RESIDENT
+      # As on the computer: no Bun transpiler cache (HOME is not writable here).
+      BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0"
+      # The same egress chain as commands had in the computer: agent-computer's filter in this
+      # process, then the egress proxy.
+      EGRESS_POLICY_REQUIRED: "0"
+      EGRESS_PROXY_DEFAULT: ${EGRESS_PROXY_DEFAULT:-http://egress:3128}
+      HTTP_PROXY: ${EGRESS_PROXY_DEFAULT:-http://egress:3128}
+      HTTPS_PROXY: ${EGRESS_PROXY_DEFAULT:-http://egress:3128}
+      http_proxy: ${EGRESS_PROXY_DEFAULT:-http://egress:3128}
+      https_proxy: ${EGRESS_PROXY_DEFAULT:-http://egress:3128}
+      NO_PROXY: localhost,127.0.0.1,::1
+      no_proxy: localhost,127.0.0.1,::1
+    volumes:
+      - computer-workspace:/workspace
+      - exec-socket:/run/computer-exec
+    networks: [internal]
+    depends_on:
+      egress:
+        condition: service_healthy
+      computer-init:
+        condition: service_completed_successfully
+    init: true
+    user: "10003:10003"
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    # Chromium for the pdf skill uses /dev/shm.
+    shm_size: 256m
+    mem_limit: 1g
+    pids_limit: 512
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "--noproxy", "*", "--unix-socket", "/run/computer-exec/exec.sock", "-o", "/dev/null", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging: *logging
+
+  egress:
+    # Stripe smokescreen v0.1.0 built from source (egress/Dockerfile): an HTTP/CONNECT proxy that
+    # resolves each destination once, refuses private, loopback, link-local (169.254.169.254),
+    # CGNAT, ULA and other non-public addresses (HTTP 407 + X-Smokescreen-Error), then dials the
+    # address it checked. Fake-IP detection uses the container resolver unless explicitly overridden.
+    image: ${DUET_IMAGE_PREFIX:-openduet}-egress:${DUET_VERSION:-local}
+    build:
+      context: ./egress
+    environment:
+      ALLOW_FAKE_IP_RANGE: ${ALLOW_FAKE_IP_RANGE:-auto}
+    networks: [internal, public]
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    pids_limit: 128
+    restart: unless-stopped
+    healthcheck:
+      # Up and refusing: a request for the metadata address must come back with smokescreen's denial.
+      test: ["CMD-SHELL", "printf 'GET http://169.254.169.254/ HTTP/1.0\\r\\n\\r\\n' | nc -w 3 127.0.0.1 3128 | grep -q X-Smokescreen-Error"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    logging: *logging
+
+  caddy:
+    # Optional (COMPOSE_PROFILES=caddy): automatic HTTPS for PUBLIC_URL's domain, publishes 80/443.
+    profiles: [caddy]
+    # caddy/Dockerfile: the pinned caddy image plus caddy/Caddyfile (no bind mount).
+    image: ${DUET_IMAGE_PREFIX:-openduet}-caddy:${DUET_VERSION:-local}
+    build:
+      context: ./caddy
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      BACKEND_PORT: ${PORT:-3000}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [public]
+    depends_on:
+      backend:
+        condition: service_healthy
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 128
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging: *logging
+
+  tunnel:
+    # Optional (COMPOSE_PROFILES=tunnel): Cloudflare Tunnel; nothing is published. Point the
+    # tunnel's public hostname at http://backend:${PORT} in the Cloudflare dashboard.
+    profiles: [tunnel]
+    image: cloudflare/cloudflared:2026.10.3@sha256:faa8e0a1475f137c910be6025f43c8e4092fdd35461b31e19fd1390657a1ff39
+    command: ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:20241", "run"]
+    environment:
+      # Read by `cloudflared tunnel run`; kept out of the command line.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    networks: [public]
+    depends_on:
+      backend:
+        condition: service_healthy
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 128
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:20241", "ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging: *logging
+
+networks:
+  # No route out: the computer reaches only the backend and egress.
+  internal:
+    internal: true
+  public: {}
+
+volumes:
+  backend-db: {}
+  backend-files: {}
+  backend-artifacts: {}
+  computer-profiles: {}
+  computer-workspace: {}
+  # M28: computer-exec's unix socket, mounted by the computer and computer-exec only. A tmpfs
+  # owned by their uid, so the socket is never on disk and goes when both containers do.
+  exec-socket:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=1m,uid=10003,gid=10003,mode=0700
+  caddy-data: {}
+  caddy-config: {}

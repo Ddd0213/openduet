@@ -1,0 +1,491 @@
+{
+  "StartCallRequest": [
+    {
+      "channelId": "ch_shop"
+    },
+    {
+      "channelId": "ch_shop",
+      "callId": "call_1"
+    },
+    {
+      "channelId": "ch_main",
+      "modelId": "mdl_step",
+      "voice": "qingchunshaonv",
+      "language": "zh-Hans"
+    }
+  ],
+  "StartCallResponse": [
+    {
+      "call": {
+        "id": "call_1",
+        "channelId": "ch_shop",
+        "engine": "gemini",
+        "modelEntryId": "mdl_live",
+        "modelId": "gemini-live-2.5-flash-preview",
+        "voice": "Puck",
+        "status": "open",
+        "startedAt": "2026-11-02T18:00:00.000Z",
+        "endedAt": null,
+        "seconds": 0,
+        "title": ""
+      },
+      "model": "gemini-live-2.5-flash-preview",
+      "url": "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained",
+      "credential": {
+        "kind": "token",
+        "value": "auth_tokens/example-token",
+        "expiresAt": "2026-11-02T18:30:00.000Z"
+      },
+      "instructions": "You are OpenDuet's voice on a live voice call. You relay for OpenDuet: pass the user's requests to it with send_to_assistant and tell the user what it says. Never approve anything.",
+      "tools": [
+        {
+          "name": "send_to_assistant",
+          "description": "Pass the user's request to Claude, who does the work.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "What to ask Claude, in full sentences."
+              }
+            },
+            "required": [
+              "text"
+            ]
+          }
+        },
+        {
+          "name": "assistant_status",
+          "description": "Check whether Claude is working on something in this channel.",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        {
+          "name": "stop_assistant",
+          "description": "Stop what Claude is doing in this channel.",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        {
+          "name": "search_memory",
+          "description": "Look something up in what Claude remembers for this channel.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "call": {
+        "id": "call_2",
+        "channelId": "ch_main",
+        "engine": "stepfun",
+        "modelEntryId": "mdl_step",
+        "modelId": "step-audio-2",
+        "voice": "qingchunshaonv",
+        "status": "open",
+        "startedAt": "2026-11-02T18:00:00.000Z",
+        "endedAt": null,
+        "seconds": 0,
+        "title": ""
+      },
+      "model": "step-audio-2",
+      "url": "wss://api.stepfun.com/v1/realtime?model=step-audio-2",
+      "credential": {
+        "kind": "key",
+        "value": "step-example-key"
+      },
+      "instructions": "You are OpenDuet's voice on a live voice call. You relay for OpenDuet: pass the user's requests to it with send_to_assistant and tell the user what it says. Never approve anything.",
+      "tools": [
+        {
+          "name": "send_to_assistant",
+          "description": "Pass the user's request to Claude, who does the work.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "What to ask Claude, in full sentences."
+              }
+            },
+            "required": [
+              "text"
+            ]
+          }
+        },
+        {
+          "name": "assistant_status",
+          "description": "Check whether Claude is working on something in this channel.",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        {
+          "name": "stop_assistant",
+          "description": "Stop what Claude is doing in this channel.",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        {
+          "name": "search_memory",
+          "description": "Look something up in what Claude remembers for this channel.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "CallLinesRequest": {
+    "lines": [
+      {
+        "id": "ln-u-1",
+        "from": "user",
+        "text": "Can you ask Claude to reorder the brake pads from the usual supplier?",
+        "at": "2026-11-02T18:00:20.000Z"
+      },
+      {
+        "id": "ln-v-1",
+        "from": "voice",
+        "text": "Sure, I'll pass that to Claude now.",
+        "at": "2026-11-02T18:00:24.000Z"
+      }
+    ]
+  },
+  "CallToolRequest": [
+    {
+      "name": "send_to_assistant",
+      "arguments": {
+        "text": "Reorder the brake pads from the usual supplier."
+      },
+      "lines": [
+        {
+          "id": "ln-u-1",
+          "from": "user",
+          "text": "Can you ask Claude to reorder the brake pads from the usual supplier?",
+          "at": "2026-11-02T18:00:20.000Z"
+        }
+      ]
+    },
+    {
+      "name": "assistant_status",
+      "arguments": {},
+      "lines": []
+    }
+  ],
+  "CallToolResponse": [
+    {
+      "result": "Sent to Claude."
+    },
+    {
+      "result": "Claude is working: checking suppliers."
+    }
+  ],
+  "EndCallRequest": [
+    {
+      "seconds": 192,
+      "lines": [
+        {
+          "id": "ln-v-2",
+          "from": "voice",
+          "text": "Claude says the order is ready and needs your approval on the card in the chat.",
+          "at": "2026-11-02T18:02:40.000Z"
+        }
+      ]
+    },
+    {
+      "seconds": 8,
+      "lines": []
+    }
+  ],
+  "MessageActionResponse": {
+    "message": {
+      "id": "msg_call",
+      "channelId": "ch_shop",
+      "taskId": null,
+      "status": "sent",
+      "clientId": null,
+      "reactions": [],
+      "stopped": false,
+      "role": "system",
+      "kind": "call",
+      "text": "",
+      "payload": {
+        "callId": "call_1",
+        "seconds": 192,
+        "title": "Reorder brake pads",
+        "lineCount": 3
+      },
+      "callId": null,
+      "createdAt": "2026-11-02T18:03:12.000Z",
+      "updatedAt": "2026-11-02T18:03:12.000Z"
+    }
+  },
+  "CallDetail": {
+    "call": {
+      "id": "call_1",
+      "channelId": "ch_shop",
+      "engine": "gemini",
+      "modelEntryId": "mdl_live",
+      "modelId": "gemini-live-2.5-flash-preview",
+      "voice": "Puck",
+      "status": "ended",
+      "startedAt": "2026-11-02T18:00:00.000Z",
+      "endedAt": "2026-11-02T18:03:12.000Z",
+      "seconds": 192,
+      "title": "Reorder brake pads"
+    },
+    "lines": [
+      {
+        "id": "ln-u-1",
+        "from": "user",
+        "text": "Can you ask Claude to reorder the brake pads from the usual supplier?",
+        "at": "2026-11-02T18:00:20.000Z"
+      },
+      {
+        "id": "ln-v-1",
+        "from": "voice",
+        "text": "Sure, I'll pass that to Claude now.",
+        "at": "2026-11-02T18:00:24.000Z"
+      },
+      {
+        "id": "ln-v-2",
+        "from": "voice",
+        "text": "Claude says the order is ready and needs your approval on the card in the chat.",
+        "at": "2026-11-02T18:02:40.000Z"
+      }
+    ],
+    "messages": [
+      {
+        "id": "msg_hand",
+        "channelId": "ch_shop",
+        "taskId": null,
+        "status": "seen",
+        "clientId": null,
+        "reactions": [],
+        "stopped": false,
+        "role": "user",
+        "kind": "text",
+        "text": "Reorder the brake pads from the usual supplier. [The user's own words on the call: «Can you ask Claude to reorder the brake pads from the usual supplier?»]",
+        "payload": {
+          "skill": null,
+          "attachments": []
+        },
+        "callId": "call_1",
+        "createdAt": "2026-11-02T18:00:25.000Z",
+        "updatedAt": "2026-11-02T18:00:25.000Z"
+      },
+      {
+        "id": "msg_reply",
+        "channelId": "ch_shop",
+        "taskId": null,
+        "status": "sent",
+        "clientId": null,
+        "reactions": [],
+        "stopped": false,
+        "role": "assistant",
+        "kind": "text",
+        "text": "The order for 4 sets of brake pads is ready. Approve it on the card and I'll send it.",
+        "payload": {
+          "skill": null,
+          "attachments": []
+        },
+        "callId": "call_1",
+        "createdAt": "2026-11-02T18:02:35.000Z",
+        "updatedAt": "2026-11-02T18:02:35.000Z"
+      }
+    ]
+  },
+  "VoiceSettings": [
+    {
+      "modelId": "mdl_live",
+      "voice": "Puck",
+      "voices": {
+        "gemini": [
+          "Puck",
+          "Charon",
+          "Kore",
+          "Fenrir",
+          "Aoede",
+          "Leda",
+          "Orus",
+          "Zephyr"
+        ],
+        "stepfun": [
+          "qingchunshaonv",
+          "wenrounansheng",
+          "linjiajiejie"
+        ]
+      },
+      "configured": true
+    },
+    {
+      "modelId": null,
+      "voice": null,
+      "voices": {
+        "gemini": [
+          "Puck",
+          "Charon",
+          "Kore",
+          "Fenrir",
+          "Aoede",
+          "Leda",
+          "Orus",
+          "Zephyr"
+        ],
+        "stepfun": [
+          "qingchunshaonv",
+          "wenrounansheng",
+          "linjiajiejie"
+        ]
+      },
+      "configured": false
+    }
+  ],
+  "UpdateVoiceSettingsRequest": [
+    {
+      "modelId": "mdl_step",
+      "voice": "linjiajiejie"
+    },
+    {
+      "voice": null
+    }
+  ],
+  "MessagePage": {
+    "messages": [
+      {
+        "id": "msg_call",
+        "channelId": "ch_shop",
+        "taskId": null,
+        "status": "sent",
+        "clientId": null,
+        "reactions": [],
+        "stopped": false,
+        "role": "system",
+        "kind": "call",
+        "text": "",
+        "payload": {
+          "callId": "call_1",
+          "seconds": 192,
+          "title": "Reorder brake pads",
+          "lineCount": 3
+        },
+        "callId": null,
+        "createdAt": "2026-11-02T18:03:12.000Z",
+        "updatedAt": "2026-11-02T18:03:12.000Z"
+      },
+      {
+        "id": "msg_call_2",
+        "channelId": "ch_main",
+        "taskId": null,
+        "status": "sent",
+        "clientId": null,
+        "reactions": [],
+        "stopped": false,
+        "role": "system",
+        "kind": "call",
+        "text": "",
+        "payload": {
+          "callId": "call_2",
+          "seconds": 8,
+          "title": "",
+          "lineCount": 0
+        },
+        "callId": null,
+        "createdAt": "2026-11-02T18:03:12.000Z",
+        "updatedAt": "2026-11-02T18:03:12.000Z"
+      }
+    ],
+    "hasMore": false
+  },
+  "Me": {
+    "id": "usr_1",
+    "username": "alex",
+    "name": "Alex Kim",
+    "firstName": "Alex",
+    "email": "alex@example.com",
+    "timezone": "America/Los_Angeles",
+    "language": "en",
+    "briefTime": {
+      "hour": 8,
+      "minute": 19
+    },
+    "checkinMinute": 49,
+    "weekendsOn": false,
+    "onboardedAt": "2026-10-25T08:05:00.000Z",
+    "mainChannelId": "ch_main",
+    "features": {
+      "connectors": true,
+      "webSearch": false,
+      "push": "ntfy",
+      "computer": true,
+      "models": true,
+      "voice": true
+    },
+    "createdAt": "2026-10-25T08:00:00.000Z"
+  },
+  "DuetEvent": [
+    {
+      "id": 401,
+      "type": "call",
+      "channelId": "ch_shop",
+      "createdAt": "2026-11-02T18:02:40.000Z",
+      "payload": {
+        "callId": "call_1",
+        "kind": "notice",
+        "text": "Brake pad order needs your approval on the card in the chat",
+        "seq": 1762106560000
+      }
+    },
+    {
+      "id": 402,
+      "type": "message",
+      "channelId": "ch_shop",
+      "createdAt": "2026-11-02T18:02:35.000Z",
+      "payload": {
+        "message": {
+          "id": "msg_reply",
+          "channelId": "ch_shop",
+          "taskId": null,
+          "status": "sent",
+          "clientId": null,
+          "reactions": [],
+          "stopped": false,
+          "role": "assistant",
+          "kind": "text",
+          "text": "The order for 4 sets of brake pads is ready. Approve it on the card and I'll send it.",
+          "payload": {
+            "skill": null,
+            "attachments": []
+          },
+          "callId": "call_1",
+          "createdAt": "2026-11-02T18:02:35.000Z",
+          "updatedAt": "2026-11-02T18:02:35.000Z"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "name": "openduet-computer-shell",
+  "private": true,
+  "dependencies": {
+    "unpdf": "1.9.1"
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "skills": [
+    {
+      "name": "skill-creator",
+      "index": "Load first to make, write or save a skill: '帮我创建一个技能：…', 'make a skill that…', 'Help me create a skill', or 'save this way of working'.",
+      "turns": ["chat"],
+      "needsComputer": false,
+      "upstream": { "repo": "https://github.com/anthropics/skills", "commit": "dbd4588f9e1033efb41dad4bef2f7947c8993d44", "path": "skills/skill-creator", "license": "Apache-2.0" },
+      "changes": [
+        "Rewrote SKILL.md for OpenDuet: ask, draft SKILL.md, try one example, then propose_skill; save only through the card.",
+        "Kept description-triggering and progressive-disclosure guidance; omitted agents, eval-viewer, assets, references and Python scripts (including packaging and claude -p evaluation)."
+      ]
+    },
+    {
+      "name": "frontend-design",
+      "index": "Load for an intentional visual direction, typography, layout and accessible responsive design when building a page, dashboard or slides.",
+      "turns": ["build"],
+      "needsComputer": false,
+      "upstream": { "repo": "https://github.com/anthropics/skills", "commit": "dbd4588f9e1033efb41dad4bef2f7947c8993d44", "path": "skills/frontend-design", "license": "Apache-2.0" },
+      "changes": []
+    },
+    {
+      "name": "theme-factory",
+      "index": "Load to choose a consistent color palette and font pairing for a Make page, dashboard or slide deck; follow the user's chosen theme.",
+      "turns": ["build"],
+      "needsComputer": false,
+      "upstream": { "repo": "https://github.com/anthropics/skills", "commit": "dbd4588f9e1033efb41dad4bef2f7947c8993d44", "path": "skills/theme-factory", "license": "Apache-2.0" },
+      "changes": [
+        "Adapted SKILL.md to unattended Make builds, read_skill_file and local font fallbacks; removed interactive showcase/confirmation steps.",
+        "Omitted the binary theme-showcase.pdf; kept all ten themes as text. No font files are bundled."
+      ]
+    },
+    {
+      "name": "officecli",
+      "index": "Load to create, inspect or edit Word, Excel and PowerPoint files with the computer's preinstalled officecli; verify files before delivery.",
+      "turns": ["chat", "task"],
+      "needsComputer": true,
+      "upstream": { "repo": "https://github.com/iOfficeAI/OfficeCLI", "commit": "5e625bf58aca732335590d7aa271f6337535a7ef", "path": "SKILL.md", "license": "Apache-2.0" },
+      "changes": [
+        "Removed SKILL.md installation commands and specialized-skill loading instructions; no upstream subskills are bundled.",
+        "Removed watch-server guidance and automatic-resident assumptions; documented disabled updates/installation, computer_exec and HTML-to-PDF."
+      ]
+    },
+    {
+      "name": "pdf",
+      "index": "Load to create PDFs from local HTML using Chromium, or read/check PDFs with unpdf and NFKC; includes Chinese font and layout checks.",
+      "turns": ["chat", "task"],
+      "needsComputer": true,
+      "upstream": null,
+      "changes": []
+    },
+    {
+      "name": "explore-data",
+      "index": "Load to profile a dataset: its grain, columns, missing values, duplicates, distributions and useful follow-up analyses.",
+      "turns": ["chat", "task"],
+      "needsComputer": false,
+      "upstream": { "repo": "https://github.com/anthropics/knowledge-work-plugins", "commit": "2574e29377c7173d0cecffef29a6ecbd7f8ccb5d", "path": "data/skills/explore-data", "license": "Apache-2.0" },
+      "changes": [
+        "Replaced SKILL.md plugin connector link and slash-command usage with OpenDuet tool availability and local data guidance.",
+        "Copied only the skill text and data/LICENSE, not the plugin or MCP configuration."
+      ]
+    },
+    {
+      "name": "task-management",
+      "index": "Load for commitments, priorities and waiting items; use OpenDuet's own tasks and proposal cards, not a separate task file.",
+      "turns": ["chat", "task"],
+      "needsComputer": false,
+      "upstream": { "repo": "https://github.com/anthropics/knowledge-work-plugins", "commit": "2574e29377c7173d0cecffef29a6ecbd7f8ccb5d", "path": "productivity/skills/task-management", "license": "Apache-2.0" },
+      "changes": [
+        "Rewrote SKILL.md around OpenDuet task context, start_task / propose_tasks and offered task-state tools; retained commitment and waiting-item guidance.",
+        "Removed TASKS.md, dashboard setup, plugin commands and automatic deletion of task history; no plugin or MCP configuration bundled."
+      ]
+    },
+    {
+      "name": "meeting-minutes-taker",
+      "index": "Load for 会议纪要 / meeting minutes: evidence-backed decisions, owners and action items, transcript completeness and uncertain speakers.",
+      "turns": ["chat", "task"],
+      "needsComputer": false,
+      "upstream": { "repo": "https://github.com/daymade/claude-code-skills", "commit": "13f42792f4301d3e42437c552ab85ea1388a4f64", "path": "daymade-audio/meeting-minutes-taker", "license": "MIT" },
+      "changes": [
+        "Removed disable-model-invocation from SKILL.md and replaced unavailable preprocessing skills with OpenDuet's officecli/pdf or pasted text.",
+        "Added a compatibility rule mapping upstream subagent reviews to honest same-context sequential passes; kept three references unchanged."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+[
+  {
+    "id": "setup_en", "lang": "en",
+    "profile": "Here's what I've picked up so far: you run Northlight Studio in Shanghai with Sam and Mei, you're finishing the gift-box packaging for Hearth & Co, and Greenleaf wants a website quote this week.",
+    "bullets": ["Keep your client mail moving", "Flag what needs a decision from you", "Draft quotes and replies for you to check"],
+    "answers": ["#1", "Call yourself Juniper.", "#last"]
+  },
+  {
+    "id": "setup_zh", "lang": "zh-Hans",
+    "profile": "目前我了解到：你在上海经营 Northlight Studio，团队有 Sam 和 Mei；Hearth & Co 的礼盒包装快收尾了，Greenleaf 这周想要官网改版的报价。",
+    "bullets": ["帮你跟进客户邮件", "把需要你拍板的事提出来", "起草报价和回复给你过目"],
+    "answers": ["#1", "叫你小满吧。", "#last"]
+  }
+]

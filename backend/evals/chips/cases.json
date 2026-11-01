@@ -1,0 +1,18 @@
+[
+  { "id": "dinner_en", "lang": "en", "expect": "chips", "ask": "Thai or pizza for dinner tonight? I can't decide." },
+  { "id": "hangzhou_zh", "lang": "zh-Hans", "expect": "chips", "ask": "下周去杭州见客户，坐高铁还是开车？" },
+  { "id": "saturday_en", "lang": "en", "expect": "chips", "ask": "Should I go to the gym this morning or sleep in? It's Saturday." },
+  { "id": "gift_zh", "lang": "zh-Hans", "expect": "chips", "ask": "妈妈下个月生日，送围巾还是茶具好？" },
+  { "id": "finish_en", "lang": "en", "expect": "chips", "ask": "Ana asked matte or gloss for the gift boxes. Which would you pick?" },
+  { "id": "redo_zh", "lang": "zh-Hans", "expect": "chips", "ask": "王磊那批打样的事，重做还是退款好？" },
+  { "id": "coffee_en", "lang": "en", "expect": "chips", "ask": "Leah wants coffee next week. Tuesday morning or Thursday afternoon, which works better for me?" },
+  { "id": "review_zh", "lang": "zh-Hans", "expect": "chips", "ask": "Mei 问下周一和 Greenleaf 的设计评审线上还是线下，你觉得呢？" },
+  { "id": "font_en", "lang": "en", "expect": "chips", "ask": "For the Greenleaf proposal deck, serif or sans-serif headings?" },
+  { "id": "lunch_zh", "lang": "zh-Hans", "expect": "chips", "ask": "中午随便吃点，面还是饭？" },
+  { "id": "open_en", "lang": "en", "expect": "optional_refinement", "ask": "What should I say in a thank-you note to Ana for a great first project together?" },
+  { "id": "open_zh", "lang": "zh-Hans", "expect": "optional_refinement", "ask": "帮我想想怎么跟团队说以后改成写书面站会。" },
+  { "id": "question_en", "lang": "en", "expect": "none_open", "ask": "I want to talk through a new project. Start by asking me one open-ended question so I can describe it in my own words, without suggested answers." },
+  { "id": "question_zh", "lang": "zh-Hans", "expect": "none_open", "ask": "我想聊聊一个新项目。先问我一个开放式问题，让我用自己的话描述，不用给候选答案。" },
+  { "id": "approval_en", "lang": "en", "expect": "none_approval", "ask": "Reply to Sam that Friday off is fine and to enjoy the trip home." },
+  { "id": "web_zh", "lang": "zh-Hans", "expect": "none_web", "ask": "查一下明天上海会不会下雨，要不要带伞？" }
+]

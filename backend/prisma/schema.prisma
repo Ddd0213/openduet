@@ -1,0 +1,924 @@
+// OpenDuet (self-hosted) database schema.
+// SQLite in WAL mode (enabled at startup in src/db.ts). Every model has its own migration.
+// Better Auth owns Session, Account and Verification and the auth columns of User.
+// JSON columns are validated with zod (backend/src/contract/) when read and written.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- auth + profile
+
+model User {
+  id              String    @id
+  // Better Auth core fields. Better Auth's required, unique "email" is mapped to authEmail,
+  // an internal placeholder (<username>@users.invalid) that is never shown to anyone.
+  name            String
+  authEmail       String    @unique
+  emailVerified   Boolean   @default(false)
+  image           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  // Better Auth username plugin
+  username        String    @unique
+  displayUsername String?
+  // Profile
+  firstName       String    @default("") // what OpenDuet calls the user
+  email           String? // the real address, filled from a connected mail account
+  timezone        String    @default("UTC") // IANA name, kept in sync from X-Timezone
+  language        String    @default("en") // en | zh-Hans, kept in sync from X-Locale
+  briefTime       String    @default("08:19") // local HH:mm; seeded 07:00-08:59 with an odd minute
+  checkinMinute   Int       @default(49) // minute of the hour for the 5 daily check-ins
+  weekendsOn      Boolean   @default(false)
+  onboardedAt     DateTime?
+
+  sessions     Session[]
+  accounts     Account[]
+  channels     Channel[]
+  messages     Message[]
+  tasks        Task[]
+  approvals    Approval[]
+  approvalRules ApprovalRule[]
+  memories     Memory[]
+  toolPolicies ToolPolicy[]
+  runs         Run[]
+  usage        Usage?
+  devices      DeviceToken[]
+  events       Event[]
+  suggestions  Suggestion[]
+  // M11: deleting a user deletes their soul, custom connectors and vault secrets with it.
+  soul             Soul?
+  customConnectors CustomConnector[]
+  vaultSecrets     VaultSecret[]
+  // M17: the OAuth clients registered for this user (one per authorization server)
+  oauthClients     OAuthClient[]
+  // PART C tables reference userId/channelId by plain indexed columns (no Prisma relation).
+  // M12: the model defaults (ModelEntry ids; plain columns) and the one-time models.json import
+  defaultModelId   String?
+  defaultThinking  String? // ThinkingLevel
+  utilityModelId   String?
+  modelsImportedAt DateTime?
+  modelProviders   ModelProvider[]
+  // M13: the voice settings (a realtime ModelEntry id; plain column) and the voice's name
+  voiceModelId     String?
+  voiceName        String?
+  calls            Call[]
+  // M14b: how often OpenDuet reaches out on its own (off | low | normal | high) and the quiet hours, in
+  // minutes after local midnight (User.timezone; start > end wraps past midnight). Quiet hours gate
+  // only OpenDuet-initiated messages: the user's own reminders and routines always go out.
+  proactivity      String    @default("normal")
+  quietStart       Int       @default(1350)
+  quietEnd         Int       @default(510)
+  // M22: when OpenDuet first offered to set up "who OpenDuet is" in the chat (asked once per person)
+  soulIntroAt      DateTime?
+  // M25: the iPhone's region (ISO 3166-1 alpha-2, "US"), kept in sync from X-Region like timezone;
+  // null until the app sends it. The weather tool's default unit and place lookup use it.
+  region           String?
+  // M27: the composer microphone's recognizer. device = Apple's (default); cloud = POST
+  // /api/transcriptions with dictationModelId on dictationProviderId (a ModelProvider id; plain
+  // column, a deleted provider reads as not set). dictationOnDevice: Apple's recognizer may only
+  // run on the iPhone (requiresOnDeviceRecognition).
+  dictationEngine     String  @default("device") // device | cloud
+  dictationOnDevice   Boolean @default(false)
+  dictationProviderId String?
+  dictationModelId    String?
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime // M28: createdAt + 90 days, never extended (contract/m28.ts SESSION_MAX_AGE_MS)
+  // M28: not the credential any more: "hashed <id>" (a space, so it can't be sent as a bearer token).
+  // The sign-in hook writes it in place of Better Auth's raw token before the insert; a raw value is
+  // only in rows from before M28 until the startup conversion.
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String? // the sign-in's client IP
+  userAgent String? // the sign-in's User-Agent (capped)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // M28: sha256(bearer token), lowercase hex; the only copy of the credential. null = before M28.
+  tokenHash  String?   @unique
+  lastUsedAt DateTime? // M28: last request, written at most every 5 minutes
+  lastIp     String? // M28: that request's client IP
+  deviceName String? // M28: the app's X-Device-Name header
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+// ---------------------------------------------------------------- chat
+
+model Channel {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isMain     Boolean   @default(false) // exactly one main thread per user
+  name       String    @default("")
+  icon       String    @default("checkbox") // one of the 24 icon keys in contract/channels.ts
+  colorHex   String    @default("#E69F4E")
+  purpose    String    @default("")
+  archived   Boolean   @default(false)
+  lastReadAt DateTime? // drives the unread badge and the "New" divider
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  // M11: this channel's addendum to the soul, and whether it reads "About you" (shared memory)
+  soulExtra       String  @default("")
+  useSharedMemory Boolean @default(true)
+  // M12: this channel's own model (ModelEntry.id; null = the default) and thinking level
+  modelId         String?
+  thinkingLevel   String?
+
+  messages    Message[]
+  tasks       Task[]
+  suggestions Suggestion[]
+  calls       Call[]
+
+  @@index([userId, archived])
+}
+
+model Message {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channelId String
+  channel   Channel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  taskId    String? // set when the message belongs to a task's own session (task detail)
+  task      Task?      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  role      String // user | assistant | system
+  kind      String     @default("text") // text | file | image | approval | ... (full list in contract/messages.ts)
+  text      String     @default("")
+  payload   String     @default("{}") // JSON, shape depends on kind
+  status    String     @default("sent") // sent | seen (user messages)
+  clientId  String? // the app's local id, echoed back so it can reconcile
+  // M13: what a voice call handed to OpenDuet, and OpenDuet's replies in those turns (hidden in the chat)
+  callId    String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  reactions Reaction[]
+
+  @@index([channelId, taskId, createdAt])
+  @@index([userId, createdAt])
+  @@index([callId])
+}
+
+// ---------------------------------------------------------------- tasks and approvals
+
+model Task {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channelId   String
+  channel     Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  title       String
+  prompt      String    @default("")
+  description String    @default("")
+  status      String    @default("working") // working | needs_input | ready_for_review | scheduled | resolved
+  steps       String    @default("[]") // JSON [{id, text, state: planned|current|done}]
+  updates     String    @default("[]") // JSON [{text, source, at}] ("Decisions and updates")
+  resources   String    @default("[]") // JSON [{title, type, link}]
+  noticedAt   DateTime? // proactive tasks: when OpenDuet noticed it
+  source      String    @default("user") // user | proactive
+  schedule    String? // JSON {cadence, hour, minute, weekdays?} for scheduled tasks
+  sessionJson String    @default("[]") // the task's own agent session (canonical messages)
+  spawnMessageId String? // the task_spawn chip in the channel thread, kept in sync with the task
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  pinnedAt    DateTime? // M9: pinned in Active (pinned first, newest pin first)
+  // M9 routines (schedule_task): status "scheduled" with `schedule` set; `prompt` is what each run does.
+  routine       Boolean   @default(false)
+  routinePaused Boolean   @default(false)
+  routineQuiet  Boolean   @default(false) // post only when something needs the user
+  nextRunAt     DateTime? // the next slot; null while paused or after a "once" routine ran
+  lastRunAt     DateTime?
+  lastRunStatus String? // completed | resolved | skipped | failed
+  // M21: the status the last "needs you" push was sent for, so a restart doesn't push it again;
+  // "<status>:reminded" once its 2 h follow-up went out too (notify/follow-ups.ts)
+  lastNotifiedStatus String?
+  // M22: what the user has to do next (JSON TaskNextStep, contract/m22.ts), derived by the server
+  // from the open question, approval, form, sign-in or failure; null when nothing waits on them.
+  nextStep           String?
+  // M22: why the last run failed (JSON TaskFailure: reason, retryable, at); cleared by Retry, a new
+  // message or a run that ends well. The status enum is unchanged: a failed task keeps needs_input.
+  failure            String?
+  // M22: when the task was last resolved (the Active list keeps resolved tasks for 7 days)
+  resolvedAt         DateTime?
+  // M22 routines: failed runs in a row (fatigue rule), who paused it (user | failures), and what the
+  // routine saw on its last run (JSON, server-only) so the next run reports only what changed.
+  routineFailStreak  Int       @default(0)
+  routinePausedBy    String?
+  routineState       String?
+  // M22: the app of the suggestion it was started from ("Gmail"); the row says "From Gmail"
+  sourceApp          String?
+
+  messages    Message[]
+  approvals   Approval[]
+  suggestions Suggestion[]
+
+  @@index([userId, status])
+  @@index([channelId])
+  @@index([routine, nextRunAt])
+  @@index([userId, resolvedAt])
+}
+
+model Approval {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String // email | payment | sign | delete | action
+  toolSlug  String
+  arguments String    @default("{}") // JSON, executed exactly as stored on Approve; never sent to the app
+  preview   String    @default("{}") // JSON shown on the card
+  status    String    @default("pending") // pending | approved | declined | expired
+  version   Int       @default(1) // bumped by every edit by chat; Approve must carry it
+  expiresAt DateTime? // payments and spend requests only
+  result    String? // JSON outcome after execution
+  changedFields String  @default("[]") // JSON string[]: preview fields changed by the latest edit by chat (the card glows them)
+  taskId    String?
+  task      Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  messageId String? // the chat message holding the card
+  /// M20: hash of the tool slug and its arguments without volatile keys (snapshot ids, refs), so
+  /// the same call while one is pending, or soon after "Not now", posts no second card
+  fingerprint String?
+  /// M20: JSON Phrase, why the card asks (browser clicks); null = the card explains itself
+  why       String?
+  /// M20: JSON ApprovalAlways, what an "Always" on the card would cover; null = no Always row
+  always    String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@index([taskId])
+  @@index([userId, fingerprint, status])
+}
+
+/// M20: an "Always" chosen on an approval card, narrower than ToolPolicy: one tool for these
+/// recipients (scopeKind recipient, scopeValue the lowercased sorted addresses), or browser clicks
+/// of one category on one site (toolSlug duet:browser_action, scopeKind site, scopeValue the site).
+/// Floor tools and categories (payments, credentials, security settings) never get one.
+model ApprovalRule {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  toolSlug   String
+  scopeKind  String // recipient | site
+  scopeValue String
+  /// browser category for site rules (send | delete | submit); "" for recipient rules
+  category   String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, toolSlug, scopeKind, scopeValue, category])
+}
+
+// ---------------------------------------------------------------- memory and policy
+
+model Memory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String // document (one per user and layer) | fact (dated; a fact with dueAt is a follow-up)
+  text      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  // M11: null = "About you" (shared by every channel that reads it); else that channel's own memory
+  // (plain column: deleting the channel deletes its memory in the channel delete).
+  channelId       String?
+  // who wrote it: user | assistant | dreaming; and the message it came from
+  source          String    @default("assistant")
+  sourceMessageId String?
+  // forgotten / archived (kept for undo and provenance, left out of prompts and lists)
+  archivedAt      DateTime?
+  // M14b: set on a fact OpenDuet should ask about later ("the interview is on Friday" -> ask on Friday evening); null otherwise
+  dueAt           DateTime?
+  // M23: where a fact saved in the background was read (JSON SourceRef plus the server-only id)
+  sourceRef       String?
+
+  @@index([userId, kind])
+  @@index([userId, channelId, archivedAt])
+}
+
+// M11: one memory-tidying pass ("dreaming") over one layer: what it changed, for provenance and limits.
+model MemoryCuration {
+  id        String   @id @default(cuid())
+  userId    String
+  channelId String? // null = "About you"
+  status    String // applied | rejected (over a limit) | failed
+  added     Int      @default(0)
+  archived  Int      @default(0)
+  reason    String   @default("")
+  // messages up to here were read
+  cursorAt  DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId, channelId, createdAt])
+}
+
+// M11: the soul. The app calls the assistant "OpenDuet".
+model Soul {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String   @default("")
+  addressAs String   @default("")
+  identity  String   @default("")
+  persona   String   @default("")
+  tone      String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ToolPolicy {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  toolSlug  String
+  mode      String // ask | always
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, toolSlug])
+}
+
+// ---------------------------------------------------------------- runs, usage, devices, events
+
+model Run {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind            String // chat | task | brief | checkin | scan | build | routine
+  scheduledFor    DateTime? // set for scheduled runs (brief, checkin); null for on-demand runs
+  slotKey         String?   @unique // M9: a routine's slot "<taskId>:<slot ISO>" (claims it once); null otherwise
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  status          String    @default("queued") // queued | running | completed | resolved | skipped | failed
+  channelId       String?
+  taskId          String?
+  providerId      String?
+  model           String?
+  inputTokens     Int       @default(0)
+  outputTokens    Int       @default(0)
+  tokensEstimated Boolean   @default(false)
+  error           String? // JSON {key, params} shown as a system line; never raw provider bodies
+  title           String? // JSON Phrase for the run list (chat: the user's message; task: its title; others: run.title.<kind>)
+  createdAt       DateTime  @default(now())
+  steps           RunStep[]
+
+  // A scheduled slot never runs twice. SQLite treats NULLs as distinct, so on-demand runs don't collide.
+  @@unique([userId, kind, scheduledFor])
+  @@index([userId, createdAt])
+}
+
+// One step of a run's record (tool call, reply text, thinking, error). Redacted and capped when
+// written (src/runs/redact.ts); steps of runs older than 30 days are deleted.
+model RunStep {
+  id         String    @id
+  runId      String
+  run        Run       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  index      Int
+  kind       String // tool | text | thinking | error
+  tool       String? // model tool name for kind tool
+  app        String? // app display name
+  title      String // JSON Phrase
+  detail     String    @default("")
+  status     String // running | ok | error | denied | awaiting_approval
+  input      String?
+  output     String?
+  approvalId String?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([runId, index])
+  @@index([approvalId])
+}
+
+model Usage {
+  id                 String    @id @default(cuid())
+  userId             String    @unique
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionTokens      Int       @default(0)
+  sessionWindowStart DateTime? // null until the first message of a 5-hour session
+  weeklyTokens       Int       @default(0)
+  weeklyWindowStart  DateTime?
+  fullResetUsedAt    DateTime? // one free full reset per calendar month
+  updatedAt          DateTime  @updatedAt
+}
+
+model DeviceToken {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider    String // apns | ntfy | bark
+  token       String // APNs device token, or the ntfy/Bark target
+  environment String   @default("production") // production | sandbox (APNs)
+  locale      String   @default("en")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  // M28: the Session that registered it (a plain column, no relation: adding a foreign key would
+  // rebuild the table). Revoking that session deletes this row. null = registered before M28.
+  sessionId   String?
+
+  @@unique([provider, token])
+  @@index([userId])
+  @@index([sessionId])
+}
+
+// The replay log behind both SSE streams (Last-Event-ID / ?since=).
+model Event {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channelId String?
+  type      String
+  payload   String   @default("{}") // JSON
+  createdAt DateTime @default(now())
+
+  @@index([userId, id])
+}
+
+// "Up next" items: work OpenDuet found in the connectors (check-ins, scans), not yet a Task.
+model Suggestion {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channelId String?
+  channel   Channel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  title     String
+  body      String   @default("")
+  prompt    String   @default("")
+  app       String? // display name of the connector it came from, e.g. "Gmail"
+  origin    String   @default("checkin") // checkin | scan | brief | chat
+  // M22: kept by the user with "Save for Up next" (origin chat); scans never hide or replace it
+  fromUser  Boolean  @default(false)
+  // M23: normalised title (suggestions/dedupe.ts), when it was hidden (14 days no repeat), the email /
+  // event it came from (JSON: app, kind, id, title, at; the id never leaves the server), its card
+  titleKey  String?
+  hiddenAt  DateTime?
+  sourceRef String?
+  messageId String?
+  status    String   @default("open") // open | added | hidden
+  taskId    String?
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([userId, titleKey])
+}
+
+// ---------------------------------------------------------------- PART C: Make and OpenDuet's computer
+
+// A self-contained HTML artifact built on OpenDuet's computer.
+model Artifact {
+  id              String   @id @default(cuid())
+  userId          String
+  channelId       String
+  type            String // web_page | docs | slides | dashboard | design | design_system
+  title           String
+  prompt          String   @default("")
+  status          String   @default("building") // building | ready | failed
+  html            String   @default("")
+  sources         String   @default("[]") // JSON [{name, app, detail}]
+  refreshSchedule String? // JSON {cadence: daily|weekdays|hourly, hour, minute}
+  pinnedToTabBar  Boolean  @default(false)
+  // M10: pinned in Make (sorts first, newest pin first); separate from pinnedToTabBar
+  pinnedAt        DateTime?
+  // M21: who started the first build (user | assistant); Retry rebuilds it with the same trust
+  startedBy       String   @default("user")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  // M24: when the user last opened it (GET /api/artifacts/:id); null = made and never opened ("Just made").
+  // Writing it keeps updatedAt (content time).
+  lastOpenedAt    DateTime?
+  // M27: a dashboard's live data (compact JSON object text, at most 64 KB; contract/m27.ts). The page reads
+  // it; update_artifact_data changes it without a rebuild. null = no live data (every artifact before M27).
+  // Writing only the data keeps updatedAt (the page's save time); the wire's updatedAt is the later of the two.
+  data            String?
+  // M27: +1 whenever `data` changes (an update, a build that saves data, a restore that brings other data back)
+  dataVersion     Int      @default(0)
+  // M27: when `data` last changed; null while it never had any
+  dataUpdatedAt   DateTime?
+
+  versions ArtifactVersion[]
+
+  @@index([userId, updatedAt])
+}
+
+// M24: one saved state of an artifact's page, written with every save (build, edit, refresh, restore);
+// the newest row is the page as it is now. At most 10 per artifact (the oldest beyond that are deleted).
+model ArtifactVersion {
+  id         String   @id @default(cuid())
+  artifactId String
+  artifact   Artifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  html       String
+  sources    String   @default("[]") // JSON [{name, app, detail}], as Artifact.sources at that save
+  metrics    String? // JSON finish_build metrics of that save (the chat card's numbers); null when none
+  by         String // user | assistant: who caused this save
+  reason     String // create | edit | refresh | restore | data (M27)
+  prompt     String? // create: the artifact's request; edit: the change asked for; null otherwise
+  createdAt  DateTime @default(now())
+  // M27: Artifact.data at this save, so a restore brings back page and data together; null = none
+  data       String?
+  // M27: reason "data": how many update_artifact_data saves were merged into this row (1+); 0 otherwise
+  dataUpdates Int     @default(0)
+  // M27: reason "data": the run whose updates this row collects (server only; merging key); null otherwise
+  runId      String?
+
+  @@index([artifactId, createdAt])
+}
+
+// A saved skill: instructions injected into the turn when the user invokes /name.
+model Skill {
+  id           String   @id @default(cuid())
+  userId       String
+  name         String // slug without the slash, e.g. my-writing-style
+  description  String   @default("")
+  instructions String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  // M11: Agent Skills folder. source: manual | github | zip | assistant
+  source          String  @default("manual")
+  sourceUrl       String?
+  // bumped whenever a script changes; a run of an external skill's scripts asks once per version
+  version         Int     @default(1)
+  approvedVersion Int     @default(0)
+
+  files SkillFile[]
+
+  @@unique([userId, name])
+}
+
+// M11: a file in a skill folder other than SKILL.md (scripts/, references/, assets/).
+model SkillFile {
+  id        String   @id @default(cuid())
+  skillId   String
+  skill     Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  path      String
+  content   Bytes
+  isText    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([skillId, path])
+}
+
+// M11: an item's default reach. No row = scope all. kind: skill | connector | app; refId = Skill.id,
+// CustomConnector.id or a Composio toolkit slug.
+model AccessRule {
+  id        String   @id @default(cuid())
+  userId    String
+  kind      String
+  refId     String
+  scope     String // all | channels
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, kind, refId])
+}
+
+// M11: a channel's own on / off for an item (overrides the item's scope). Plain columns: the channel
+// delete deletes its rows.
+model ChannelAccess {
+  id        String   @id @default(cuid())
+  userId    String
+  channelId String
+  kind      String
+  refId     String
+  enabled   Boolean
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([channelId, kind, refId])
+  @@index([userId, kind, refId])
+}
+
+// M11: an MCP server or a domain-bound API key the user added. Secrets live in VaultSecret.
+model CustomConnector {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind        String // mcp | api_key
+  name        String
+  description String    @default("")
+  url         String? // mcp
+  domain      String? // api_key
+  headerName  String? // api_key
+  valuePrefix String? // api_key
+  // mcp: JSON [{name, secret, value|null}] (secret values are VaultSecret rows named "header:<name>")
+  headers     String    @default("[]")
+  status      String    @default("active") // active | failed
+  error       String?
+  // mcp: JSON [{name, description, access, inputSchema}] from tools/list
+  tools       String    @default("[]")
+  checkedAt   DateTime?
+  // M17: the MCP Registry name it was installed from (a template); null for ones added by hand
+  registryName String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  // M17: its OAuth sign-in (remote MCP authorization), when the server asks for one
+  oauthGrant  OAuthGrant?
+
+  @@index([userId])
+}
+
+// M11: the vault. AES-256-GCM with the server's vault key; a random 12-byte nonce per row and the
+// JSON array [id, userId, ownerKind, ownerId, name] as additional data. `ciphertext` ends with the 16-byte tag. Never returned or logged.
+model VaultSecret {
+  id         String   @id
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // what it belongs to: connector (CustomConnector.id) now; provider (M12) later
+  ownerKind  String
+  ownerId    String
+  // "key", or "header:<name>"
+  name       String
+  ciphertext Bytes
+  nonce      Bytes
+  last4      String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, ownerKind, ownerId, name])
+}
+
+// M17: an OAuth client this user got by dynamic client registration (RFC 7591) at one
+// authorization server, reused by every connector signed in there. The client secret, if the
+// server issued one, is a VaultSecret (ownerKind "oauth_client", ownerId = id, name "client_secret").
+model OAuthClient {
+  id                    String   @id @default(cuid())
+  userId                String
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  issuer                String
+  authorizationEndpoint String
+  tokenEndpoint         String
+  registrationEndpoint  String?
+  clientId              String
+  // client_secret_post | client_secret_basic | none
+  authMethod            String   @default("none")
+  redirectUri           String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  grants OAuthGrant[]
+
+  @@unique([userId, issuer, redirectUri])
+}
+
+// M17: a custom connector's OAuth sign-in. The access and refresh tokens are VaultSecret rows of the
+// connector (ownerKind "connector", names "oauth:access_token" / "oauth:refresh_token"), never columns.
+model OAuthGrant {
+  id          String          @id @default(cuid())
+  userId      String
+  connectorId String          @unique
+  connector   CustomConnector @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+  clientId    String?
+  client      OAuthClient?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  // needs_sign_in | signed_in
+  status      String          @default("needs_sign_in")
+  // the resource indicator (RFC 8707) the tokens are for: the MCP server URL
+  resource    String
+  scope       String?
+  expiresAt   DateTime?
+  signedInAt  DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([userId])
+}
+
+// An emoji badge on a message, from the user or from OpenDuet.
+model Reaction {
+  id        String   @id @default(cuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  emoji     String // 👍 ❤️ ⭐ (and whatever OpenDuet picks)
+  by        String // user | assistant
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, emoji, by])
+}
+
+// Good/Bad response ratings and send_feedback / "Send feedback" text.
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String
+  messageId String?
+  rating    String? // good | bad
+  text      String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// set_reminder(at, text): a system line now, a notification when it fires.
+model Reminder {
+  id        String    @id @default(cuid())
+  userId    String
+  channelId String
+  at        DateTime
+  text      String
+  firedAt   DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([firedAt, at])
+}
+
+// Link-style spend request from request_payment (test mode: nothing is charged).
+model SpendRequest {
+  id          String   @id @default(cuid())
+  userId      String
+  channelId   String
+  messageId   String?
+  approvalId  String?
+  amount      Int // minor units (cents); the app formats it in the user's locale
+  currency    String   @default("USD")
+  merchant    String
+  description String   @default("")
+  item        String   @default("")
+  expiresAt   DateTime
+  status      String   @default("pending") // pending | approved | declined | expired
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, status])
+}
+
+// A channel's shared files: the user's composer attachments and files from OpenDuet
+// (send_file, screenshots, files written on its computer). Bytes live under FILES_DIR.
+model ChannelFile {
+  id        String   @id @default(cuid())
+  userId    String
+  channelId String
+  messageId String? // the message it was sent with / posted in; null while an upload waits to be sent
+  path      String // safe generated name relative to FILES_DIR, never the original file name
+  name      String // original / display file name
+  mime      String // real type detected from the bytes, not the client's claim
+  size      Int // bytes; uploads are capped at 25 MB
+  source    String // user | assistant
+  createdAt DateTime @default(now())
+  // M26: how it got here: send (send_file) | write (computer_files_write shared it) | screenshot | upload
+  // (the composer); null = from before M26 with no match in AuditLog (the Files page's "Other").
+  origin        String?
+  // M26: its path in /workspace relative to /workspace ("build/build.py", "uploads/ab12cd34-x.pdf"),
+  // the original that "also delete from OpenDuet's computer" removes; null = none (screenshots, old rows).
+  workspacePath String?
+  // M26: the task whose own session made it (TurnInput.taskId; null for chat, channel and routine turns
+  // and uploads); no relation, so deleting the task keeps the row.
+  taskId        String?
+  // M26: deleted by the user. The row stays as a tombstone so its chat card shows "Deleted"; the bytes
+  // in FILES_DIR are gone, it leaves the Files lists and its content is 404.
+  deletedAt     DateTime?
+
+  @@index([channelId, createdAt])
+  @@index([messageId])
+}
+
+// Audit trail of every action on OpenDuet's computer. Never stores typed values,
+// file contents or full commands: only the action, who did it and the outcome.
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String // e.g. computer_navigate, computer_exec, take_over, hand_back, sign_in
+  actor     String // assistant | user | system
+  target    String   @default("") // domain, file path or tool slug; never secrets
+  outcome   String // ok | error | denied | needs_approval
+  runId     String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+/// M12: a model provider (OpenAI, Anthropic, Gemini, StepFun or a custom URL). Its key is a
+/// VaultSecret (ownerKind "provider", ownerId = id, name "key").
+model ModelProvider {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String // openai | anthropic | gemini | stepfun | custom
+  protocol  String // openai | anthropic
+  name      String
+  baseUrl   String
+  auth      String? // anthropic protocol: x-api-key | bearer
+  headers   String   @default("[]") // JSON [{name, value}], non-secret
+  status    String   @default("active") // active | failed
+  error     String?
+  // models.json provider id when imported (the upsert key); null for ones added in the app
+  importKey String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  // M27: the provider's site for kinds that have regions (stepfun: cn | intl); null = no regions.
+  // The realtime (wss) and default chat addresses follow it (contract/m27voice.ts VOICE_ENDPOINTS).
+  region    String?
+
+  models ModelEntry[]
+
+  @@unique([userId, name])
+  @@unique([userId, importKey])
+  @@index([userId])
+}
+
+/// M12: a model in the user's list. modelId is the id sent to the provider.
+model ModelEntry {
+  id              String        @id @default(cuid())
+  userId          String
+  providerId      String
+  provider        ModelProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  purpose         String        @default("chat") // chat | realtime
+  modelId         String
+  label           String
+  contextWindow   Int
+  maxOutputTokens Int
+  thinkingLevels  String        @default("[]") // JSON ThinkingLevel[]
+  thinkingFormat  String        @default("none") // effort | budget | none
+  defaultThinking String?
+  tools           Boolean       @default(true)
+  vision          Boolean       @default(false)
+  serverWebTools  Boolean       @default(false)
+  promptCaching   Boolean       @default(false)
+  source          String        @default("manual") // models.dev | default | imported | manual
+  edited          String        @default("[]") // JSON field names changed by hand
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([providerId, modelId])
+  @@index([userId])
+}
+
+/// M13: a realtime voice call. The phone talks to the provider; the server keeps the transcript,
+/// hands requests to OpenDuet and posts the call's one line when it ends.
+model Call {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channelId    String
+  channel      Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  engine       String // gemini | stepfun
+  modelEntryId String
+  modelId      String
+  voice        String
+  status       String    @default("open") // open | ended
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+  seconds      Int       @default(0)
+  title        String    @default("")
+  // the newest request, line or turn (the 2 h sweep)
+  lastActiveAt DateTime  @default(now())
+  // the newest send_to_assistant: user lines after it are "the user's own words" of the next hand-off
+  handedAt     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  lines CallLine[]
+
+  @@index([userId, status])
+  @@index([channelId])
+}
+
+/// M13: one transcript line, as the phone heard it. lineId is the phone's id (kept once per call).
+model CallLine {
+  id        String   @id @default(cuid())
+  callId    String
+  call      Call     @relation(fields: [callId], references: [id], onDelete: Cascade)
+  lineId    String
+  from      String // user | voice
+  text      String
+  at        DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([callId, lineId])
+  @@index([callId, at])
+}

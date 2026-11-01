@@ -1,0 +1,1068 @@
+OpenDuet patch for CopilotKit/OpenBot agent-computer (MIT) at da9a3caf5784074baa779110dd7e9d1338c8871b.
+Window mode: while someone watches /stream, ffmpeg x11grab sends the whole X screen in the page cast's frame message; input goes through one xdotool process, text through xclip or CDP.
+Applied in /app by computer/Dockerfile: patch -p1 --forward --fuzz=0. Regenerated with diff -ruN.
+
+diff -ruN a/src/index.ts b/src/index.ts
+--- a/src/index.ts	2026-10-28 00:00:00
++++ b/src/index.ts	2026-10-28 00:00:00
+@@ -35,8 +35,14 @@
+   navigateWebPage,
+   type PagePurpose,
+ } from "./navigation";
+-import { createProfiles, numberFromEnv, VIEWPORT } from "./profiles";
+ import {
++  createProfiles,
++  numberFromEnv,
++  SCREEN,
++  VIEWPORT,
++  WINDOW_MODE,
++} from "./profiles";
++import {
+   parseExecTimeout,
+   parseInputMessage,
+   parseNavigateUrl,
+@@ -58,6 +64,8 @@
+   parseSignInFill,
+ } from "./sign-in";
+ import { startVirtualDisplay } from "./virtual-display";
++import { startWindowCast } from "./window-cast";
++import { createXInput } from "./x-input";
+ import { applyWebBotAuthPush } from "./web-bot-auth";
+ import {
+   WorkspaceFileError,
+@@ -127,11 +135,20 @@
+   RUNTIME.useVirtualDisplay ? "headed" : "headless",
+ );
+ if (VIRTUAL_DISPLAY) process.env.DISPLAY = VIRTUAL_DISPLAY.name;
++/*
++ * OpenDuet patch 0002: window mode, where the live screen is the whole X screen and a person's
++ * input goes through the X server (see window-cast.ts). One xdotool process for the computer,
++ * started on first use; nothing captures the screen until somebody watches it.
++ */
++const WINDOW_DISPLAY = WINDOW_MODE ? VIRTUAL_DISPLAY?.name : undefined;
++const X_INPUT = WINDOW_DISPLAY ? createXInput() : undefined;
+ console.info(
+   JSON.stringify({
+     type: "computer-browser-mode",
+     mode: BROWSER_MODE,
+     display: VIRTUAL_DISPLAY?.name ?? null,
++    liveScreen: WINDOW_DISPLAY ? "window" : "page",
++    ...(WINDOW_DISPLAY ? { screen: SCREEN } : {}),
+   }),
+ );
+ 
+@@ -588,6 +605,30 @@
+             void session.viewer.release(ws);
+           }
+         };
++
++        if (WINDOW_DISPLAY && X_INPUT) {
++          /*
++           * OpenDuet patch 0002: window mode. One capture of the whole X screen for as long as this
++           * socket owns the screen; it shows whatever page or tab is in front, so it is not
++           * restarted when the page changes. The loop below still asks for the page every second,
++           * which is what keeps a watched browser counted as in use (and starts it again after it
++           * crashed), as the page cast's follow loop does.
++           */
++          await currentPage(ws.data.botId);
++          const cast = startWindowCast({
++            display: WINDOW_DISPLAY,
++            screen: SCREEN,
++            input: X_INPUT,
++            page: () => currentPage(ws.data.botId),
++            onFrame: send,
++          });
++          if (!(await claim.install(cast))) return;
++          const follow = setInterval(() => {
++            void currentPage(ws.data.botId).catch(() => undefined);
++          }, FOLLOW_INTERVAL_MS);
++          claim.setFollow(() => clearInterval(follow));
++          return;
++        }
+ 
+         /*
+          * The cast follows the Bot's current page. Re-checking also handles a page being closed
+diff -ruN a/src/jpeg-frames.ts b/src/jpeg-frames.ts
+--- a/src/jpeg-frames.ts	1970-01-01 08:00:00
++++ b/src/jpeg-frames.ts	2026-10-28 00:00:00
+@@ -0,0 +1,114 @@
++/**
++ * OpenDuet patch (computer/patches/0002): cut a Motion-JPEG byte stream into whole JPEG frames.
++ *
++ * ffmpeg's `-f mjpeg` output is JPEG after JPEG with nothing in between, arriving in pipe-sized
++ * chunks that split frames anywhere. A frame ends at the EOI marker (FF D9), but those two bytes can
++ * also sit inside a header segment (a quantisation table is arbitrary bytes), so the parser walks the
++ * segments by their lengths up to the start of scan and only then looks for EOI in the entropy-coded
++ * data, where a literal FF is always followed by 00 (stuffing) or a restart marker D0-D7.
++ *
++ * No Playwright, no I/O: a test can feed it bytes.
++ */
++
++const SOI = 0xd8;
++const EOI = 0xd9;
++const SOS = 0xda;
++
++/** A frame bigger than this is not a frame; drop what is buffered and resynchronise. */
++export const MAX_FRAME_BYTES = 8 * 1024 * 1024;
++
++/** Where the JPEG starting at `start` (its SOI) ends, exclusive; -1 if not all here yet. */
++export function jpegEnd(data: Uint8Array, start: number): number {
++  let at = start + 2;
++  // Marker segments up to and including the start of scan.
++  for (;;) {
++    if (at + 4 > data.length) return -1;
++    if (data[at] !== 0xff) return -2;
++    const marker = data[at + 1]!;
++    if (marker === 0xff) {
++      at += 1; // fill byte
++      continue;
++    }
++    if (marker === EOI) return at + 2; // an image with no scan
++    if (marker >= 0xd0 && marker <= 0xd7) return -2; // a restart marker outside a scan
++    const length = (data[at + 2]! << 8) | data[at + 3]!;
++    if (length < 2) return -2;
++    at += 2 + length;
++    if (marker === SOS) break;
++  }
++  // Entropy-coded data. Progressive files have several scans; skip any marker that is not EOI.
++  for (;;) {
++    const ff = data.indexOf(0xff, at);
++    if (ff < 0 || ff + 1 >= data.length) return -1;
++    const next = data[ff + 1]!;
++    if (next === EOI) return ff + 2;
++    if (next === 0x00 || (next >= 0xd0 && next <= 0xd7) || next === 0xff) {
++      at = ff + 1;
++      continue;
++    }
++    // Another segment (DHT, a further SOS): step over it by its length.
++    if (ff + 4 > data.length) return -1;
++    const length = (data[ff + 2]! << 8) | data[ff + 3]!;
++    if (length < 2) return -2;
++    at = ff + 2 + length;
++  }
++}
++
++/** Feed chunks in, get whole frames out. */
++export class JpegSplitter {
++  private pending: Uint8Array = new Uint8Array(0);
++
++  push(chunk: Uint8Array): Uint8Array[] {
++    const joined = new Uint8Array(this.pending.length + chunk.length);
++    joined.set(this.pending, 0);
++    joined.set(chunk, this.pending.length);
++    const frames: Uint8Array[] = [];
++    let at = 0;
++    for (;;) {
++      const start = findSoi(joined, at);
++      if (start < 0) {
++        // Keep a trailing FF: it may be the first half of the next SOI.
++        at = joined.length > 0 && joined[joined.length - 1] === 0xff ? joined.length - 1 : joined.length;
++        break;
++      }
++      const end = jpegEnd(joined, start);
++      if (end === -2) {
++        at = start + 2; // corrupt: look for the next SOI after this one
++        continue;
++      }
++      if (end === -1) {
++        at = start;
++        break;
++      }
++      frames.push(joined.slice(start, end));
++      at = end;
++    }
++    this.pending = joined.slice(at);
++    if (this.pending.length > MAX_FRAME_BYTES) this.pending = new Uint8Array(0);
++    return frames;
++  }
++}
++
++function findSoi(data: Uint8Array, from: number): number {
++  let at = from;
++  for (;;) {
++    const ff = data.indexOf(0xff, at);
++    if (ff < 0 || ff + 1 >= data.length) return -1;
++    if (data[ff + 1] === SOI) return ff;
++    at = ff + 1;
++  }
++}
++
++/** True when `frame` is byte for byte the last frame sent: an unchanged screen costs nothing. */
++export class FrameDedup {
++  private last: Uint8Array | undefined;
++
++  isRepeat(frame: Uint8Array): boolean {
++    const last = this.last;
++    this.last = frame;
++    if (!last || last.length !== frame.length) return false;
++    return Buffer.from(last.buffer, last.byteOffset, last.length).equals(
++      Buffer.from(frame.buffer, frame.byteOffset, frame.length),
++    );
++  }
++}
+diff -ruN a/src/window-cast.ts b/src/window-cast.ts
+--- a/src/window-cast.ts	1970-01-01 08:00:00
++++ b/src/window-cast.ts	2026-10-28 00:00:00
+@@ -0,0 +1,188 @@
++/**
++ * OpenDuet patch (computer/patches/0002): the live screen as the whole browser window.
++ *
++ * `screencast.ts` casts the page through CDP, which cannot see Chrome's own tab strip, address bar or
++ * pointer. In window mode the cast is the X screen instead: one `ffmpeg -f x11grab` (pointer drawn)
++ * per watched screen, started when somebody opens `/stream` and stopped when they leave, writing
++ * Motion-JPEG that `jpeg-frames.ts` cuts into frames. Each frame goes out in the same message the
++ * page cast sends (`{ type: "frame", data: <base64 JPEG>, width, height }`, the size being the X
++ * screen's), so whatever reads `/stream` today keeps working.
++ *
++ * Measured on this image (Chromium 151, 860x1600, arm64): about a third of a core while a screen is
++ * watched at 8 fps. A still screen costs no bandwidth: ffmpeg's JPEG encoder is deterministic, so an
++ * unchanged screen encodes to the same bytes and a frame identical to the last one sent is not sent
++ * (measured: 464 frames, 11 sent). Not ffmpeg's `mpdecimate`: it also drops the first frame of a
++ * still screen, which left a new viewer looking at nothing.
++ *
++ * Input goes the other way through `x-input.ts`; text through the clipboard while the browser's own
++ * UI has focus (the address bar) and through CDP `Input.insertText` while the page has it. Focus is
++ * judged from where the last press landed: above the page's content area is Chrome's UI, and below
++ * the tab strip that is the toolbar, where the first text typed replaces the address.
++ */
++import { type ChildProcess, spawn } from "node:child_process";
++import type { Page } from "playwright";
++import { FrameDedup, JpegSplitter } from "./jpeg-frames";
++import type { ScreenSpec } from "./screen";
++import type { FrameMessage, InputMessage, Screencast } from "./screencast";
++import { contentOrigin, readWindowMetrics, type WindowMetrics } from "./window-geometry";
++import { planInput, type XInput } from "./x-input";
++
++export const CAPTURE_FPS = 8;
++/** ffmpeg's mjpeg -q:v (2 best ... 31 worst). 6 keeps text sharp at about 45 KB a frame. */
++export const CAPTURE_QUALITY = 6;
++const STOP_BUDGET_MS = 2_000;
++/** Chromium's tab strip, in DIP from the top of its window (measured: the toolbar starts at ~39). */
++export const TAB_STRIP_DIP = 40;
++const MAX_RESTARTS = 5;
++
++/** The ffmpeg command line for one watched screen. */
++export function captureArgs(
++  display: string,
++  screen: ScreenSpec,
++  fps = CAPTURE_FPS,
++  quality = CAPTURE_QUALITY,
++): string[] {
++  return [
++    "-hide_banner",
++    "-loglevel",
++    "error",
++    "-nostdin",
++    "-f",
++    "x11grab",
++    "-draw_mouse",
++    "1",
++    "-framerate",
++    String(fps),
++    "-video_size",
++    `${screen.width}x${screen.height}`,
++    "-i",
++    display,
++    "-c:v",
++    "mjpeg",
++    "-q:v",
++    String(quality),
++    "-f",
++    "mjpeg",
++    "pipe:1",
++  ];
++}
++
++export type WindowCastOptions = {
++  display: string;
++  screen: ScreenSpec;
++  input: XInput;
++  /** The page the Bot is on: CDP text goes there, and it says where the content area starts. */
++  page: () => Promise<Page>;
++  onFrame: (frame: FrameMessage) => void;
++  /** Tests replace the capture process. */
++  spawnCapture?: (args: string[]) => ChildProcess;
++};
++
++export function startWindowCast(options: WindowCastOptions): Screencast {
++  const { screen, input, onFrame } = options;
++  const spawnCapture =
++    options.spawnCapture ??
++    ((args: string[]) => spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] }));
++  const dedup = new FrameDedup();
++  let stopped = false;
++  let capture: ChildProcess | undefined;
++  let failures = 0;
++
++  const launch = () => {
++    if (stopped) return;
++    const splitter = new JpegSplitter();
++    let framed = false;
++    let errors = "";
++    const child = spawnCapture(captureArgs(options.display, screen));
++    capture = child;
++    child.stdout?.on("data", (chunk: Buffer) => {
++      for (const frame of splitter.push(chunk)) {
++        framed = true;
++        failures = 0;
++        if (stopped || dedup.isRepeat(frame)) continue;
++        onFrame({
++          type: "frame",
++          data: Buffer.from(frame.buffer, frame.byteOffset, frame.length).toString("base64"),
++          width: screen.width,
++          height: screen.height,
++        });
++      }
++    });
++    child.stderr?.on("data", (data: Buffer) => {
++      errors = (errors + String(data)).slice(-2_000);
++    });
++    child.on("error", () => undefined);
++    child.on("exit", (code, signal) => {
++      if (capture === child) capture = undefined;
++      if (stopped) return;
++      failures = framed ? 1 : failures + 1;
++      console.error(
++        JSON.stringify({
++          type: "computer-window-capture-exited",
++          code,
++          signal,
++          restarting: failures <= MAX_RESTARTS,
++          stderr: errors.slice(-300),
++        }),
++      );
++      if (failures <= MAX_RESTARTS) setTimeout(launch, 1_000 * failures).unref?.();
++    });
++  };
++  launch();
++
++  let uiFocus = false;
++  /** The last press was in the toolbar (the address bar): the next text replaces the address. */
++  let replaceNext = false;
++  let metrics: WindowMetrics | undefined;
++  const wheelCarry = { x: 0, y: 0 };
++  let queue: Promise<unknown> = Promise.resolve();
++
++  const apply = async (message: InputMessage): Promise<void> => {
++    if (stopped) return;
++    const plan = planInput(message, screen, wheelCarry);
++    if (plan.kind === "none") return;
++    if (plan.kind === "text") {
++      const replace = replaceNext;
++      replaceNext = false;
++      if (uiFocus) await input.paste(plan.text, { replace });
++      else await (await options.page()).keyboard.insertText(plan.text);
++      return;
++    }
++    if (plan.pressedAt) {
++      metrics = (await readWindowMetrics(await options.page(), 250)) ?? metrics;
++      if (metrics) {
++        const y = plan.pressedAt.y;
++        uiFocus = y < contentOrigin(metrics).y;
++        const tabStripBottom = Math.round((metrics.screenY + TAB_STRIP_DIP) * (metrics.devicePixelRatio || 1));
++        replaceNext = uiFocus && y >= tabStripBottom;
++      }
++    } else if (message.type === "key") replaceNext = false;
++    await input.run(plan.commands);
++    // Enter in the address bar loads the page and hands it focus.
++    if (message.type === "key" && message.event === "down" && message.key === "Enter")
++      uiFocus = false;
++  };
++
++  return {
++    async stop() {
++      if (stopped) return;
++      stopped = true;
++      const child = capture;
++      capture = undefined;
++      if (!child || child.exitCode !== null || child.signalCode !== null) return;
++      const exited = new Promise((resolve) => child.once("exit", resolve));
++      child.kill("SIGTERM");
++      const done = await Promise.race([
++        exited.then(() => true),
++        new Promise((resolve) => setTimeout(() => resolve(false), STOP_BUDGET_MS)),
++      ]);
++      if (!done) child.kill("SIGKILL");
++    },
++    send(message) {
++      // In order: a click that focuses a field lands before the text meant for it.
++      const work = queue.then(() => apply(message));
++      queue = work.catch(() => undefined);
++      return work;
++    },
++  };
++}
+diff -ruN a/src/window-geometry.ts b/src/window-geometry.ts
+--- a/src/window-geometry.ts	1970-01-01 08:00:00
++++ b/src/window-geometry.ts	2026-10-28 00:00:00
+@@ -0,0 +1,80 @@
++/**
++ * OpenDuet patch (computer/patches/0002): where the page sits inside the X screen.
++ *
++ * A page reports its window in DIP (`screenX`, `outerWidth`, ...) and its own content in CSS px
++ * (`innerWidth`); at page zoom 100% a CSS px is a DIP, and a DIP is `devicePixelRatio` X pixels.
++ * The browser's own UI (tab strip, toolbar, any infobar) is the part of the window above the content.
++ * There is no window manager, so there are no borders: the content is flush with the window's
++ * left edge and its bottom.
++ */
++import type { Page } from "playwright";
++
++export type WindowMetrics = {
++  screenX: number;
++  screenY: number;
++  outerWidth: number;
++  outerHeight: number;
++  innerWidth: number;
++  innerHeight: number;
++  devicePixelRatio: number;
++};
++
++/** The X pixel at which the page's content area begins. */
++export function contentOrigin(metrics: WindowMetrics): { x: number; y: number } {
++  const dpr = metrics.devicePixelRatio > 0 ? metrics.devicePixelRatio : 1;
++  const chromeTop = Math.max(0, metrics.outerHeight - metrics.innerHeight);
++  const chromeLeft = Math.max(0, (metrics.outerWidth - metrics.innerWidth) / 2);
++  return {
++    x: Math.round((metrics.screenX + chromeLeft) * dpr),
++    y: Math.round((metrics.screenY + chromeTop) * dpr),
++  };
++}
++
++/** A point in the page's CSS px as an X screen pixel. */
++export function pageToScreen(
++  metrics: WindowMetrics,
++  point: { x: number; y: number },
++): { x: number; y: number } {
++  const dpr = metrics.devicePixelRatio > 0 ? metrics.devicePixelRatio : 1;
++  const origin = contentOrigin(metrics);
++  return {
++    x: Math.round(origin.x + point.x * dpr),
++    y: Math.round(origin.y + point.y * dpr),
++  };
++}
++
++/** Read the page's window metrics; undefined if the page does not answer in `budgetMs`. */
++export async function readWindowMetrics(
++  page: Page,
++  budgetMs = 500,
++): Promise<WindowMetrics | undefined> {
++  return within(
++    page.evaluate(() => ({
++      screenX,
++      screenY,
++      outerWidth,
++      outerHeight,
++      innerWidth,
++      innerHeight,
++      devicePixelRatio,
++    })),
++    budgetMs,
++  );
++}
++
++/** `work`'s value, or undefined once `budgetMs` has passed or it failed. */
++export async function within<T>(
++  work: Promise<T>,
++  budgetMs: number,
++): Promise<T | undefined> {
++  let timer: ReturnType<typeof setTimeout> | undefined;
++  const deadline = new Promise<undefined>((resolve) => {
++    timer = setTimeout(() => resolve(undefined), budgetMs);
++    timer.unref?.();
++  });
++  try {
++    return await Promise.race([work.catch(() => undefined), deadline]);
++  } finally {
++    if (timer) clearTimeout(timer);
++  }
++}
+diff -ruN a/src/x-input.ts b/src/x-input.ts
+--- a/src/x-input.ts	1970-01-01 08:00:00
++++ b/src/x-input.ts	2026-10-28 00:00:00
+@@ -0,0 +1,306 @@
++/**
++ * OpenDuet patch (computer/patches/0002): a person's input in window mode, through the X server.
++ *
++ * In window mode the person can reach Chrome's own tab strip, address bar and buttons, which CDP's
++ * Input domain cannot (it only reaches the page). So pointer and keys go through XTest, via one
++ * long-lived `xdotool -` process that reads commands from stdin (measured: it runs each line as it
++ * arrives). Text does not: xdotool's typing of non-ASCII text is unreliable, so text goes through
++ * the clipboard (xclip, then Ctrl+V) or CDP `Input.insertText`, chosen by the caller.
++ *
++ * `xdotool -` is a script interpreter with an `exec` command, so nothing a person sends ever reaches
++ * it as text: every token written is a number this file rounded or a keysym from the table below.
++ *
++ * The planning half (`planInput`, `keysymFor`, `glideCommands`) is pure, for the tests.
++ */
++import { type ChildProcess, spawn } from "node:child_process";
++import type { InputMessage } from "./screencast";
++
++/** DOM `key` names -> X keysyms. Anything not here and not a single printable ASCII is ignored. */
++const NAMED_KEYS: Record<string, string> = {
++  Enter: "Return",
++  Backspace: "BackSpace",
++  Tab: "Tab",
++  Escape: "Escape",
++  Delete: "Delete",
++  Insert: "Insert",
++  Home: "Home",
++  End: "End",
++  PageUp: "Prior",
++  PageDown: "Next",
++  ArrowUp: "Up",
++  ArrowDown: "Down",
++  ArrowLeft: "Left",
++  ArrowRight: "Right",
++  Shift: "Shift_L",
++  Control: "Control_L",
++  Alt: "Alt_L",
++  Meta: "Super_L",
++  " ": "space",
++};
++for (let n = 1; n <= 12; n += 1) NAMED_KEYS[`F${n}`] = `F${n}`;
++
++const PUNCTUATION: Record<string, string> = {
++  "!": "exclam", '"': "quotedbl", "#": "numbersign", $: "dollar", "%": "percent",
++  "&": "ampersand", "'": "apostrophe", "(": "parenleft", ")": "parenright", "*": "asterisk",
++  "+": "plus", ",": "comma", "-": "minus", ".": "period", "/": "slash", ":": "colon",
++  ";": "semicolon", "<": "less", "=": "equal", ">": "greater", "?": "question", "@": "at",
++  "[": "bracketleft", "\\": "backslash", "]": "bracketright", "^": "asciicircum",
++  _: "underscore", "`": "grave", "{": "braceleft", "|": "bar", "}": "braceright",
++  "~": "asciitilde",
++};
++
++/** The X keysym for a DOM key, or undefined when it is not one we send. */
++export function keysymFor(key: string): string | undefined {
++  if (Object.hasOwn(NAMED_KEYS, key)) return NAMED_KEYS[key];
++  if (key.length === 1 && /^[A-Za-z0-9]$/.test(key)) return key;
++  if (key.length === 1 && Object.hasOwn(PUNCTUATION, key)) return PUNCTUATION[key];
++  return undefined;
++}
++
++/**
++ * Scroll per wheel click, in CSS px: measured, one X wheel click scrolls a Chromium page 120 CSS px
++ * at any scale. The same unit as the page cast's CDP `deltaY`, so a surface's scroll goes as far.
++ */
++export const WHEEL_PIXELS = 120;
++const MAX_WHEEL_CLICKS = 20;
++
++export type InputPlan =
++  /** xdotool lines to write. `pressedAt` is set for a mouse press, so focus can be judged. */
++  | { kind: "x"; commands: string[]; pressedAt?: { x: number; y: number } }
++  /** Text for the caller to deliver (clipboard or CDP). */
++  | { kind: "text"; text: string }
++  | { kind: "none" };
++
++export type Screen = { width: number; height: number };
++
++const BUTTONS = { left: 1, middle: 2, right: 3 } as const;
++
++function clampTo(value: number, size: number): number {
++  return Math.min(Math.max(Math.round(value), 0), size - 1);
++}
++
++/**
++ * One message from the surface as xdotool commands. Coordinates are X screen pixels (the frames
++ * are the whole screen, so the surface's pixels are these). `wheelCarry` holds the scroll that did
++ * not yet make a whole wheel click, per axis, between calls.
++ */
++export function planInput(
++  message: InputMessage,
++  screen: Screen,
++  wheelCarry: { x: number; y: number } = { x: 0, y: 0 },
++): InputPlan {
++  if (message.type === "text") {
++    return message.text ? { kind: "text", text: message.text } : { kind: "none" };
++  }
++  if (message.type === "mouse") {
++    const x = clampTo(message.x, screen.width);
++    const y = clampTo(message.y, screen.height);
++    const button = BUTTONS[message.button ?? "left"] ?? 1;
++    const move = `mousemove ${x} ${y}`;
++    if (message.event === "moved") return { kind: "x", commands: [move] };
++    if (message.event === "pressed")
++      return { kind: "x", commands: [move, `mousedown ${button}`], pressedAt: { x, y } };
++    return { kind: "x", commands: [move, `mouseup ${button}`] };
++  }
++  if (message.type === "wheel") {
++    const x = clampTo(message.x, screen.width);
++    const y = clampTo(message.y, screen.height);
++    const commands = [`mousemove ${x} ${y}`];
++    const axes: Array<["x" | "y", number, number, number]> = [
++      ["y", message.deltaY, 5, 4],
++      ["x", message.deltaX, 7, 6],
++    ];
++    for (const [axis, delta, forward, back] of axes) {
++      const total = wheelCarry[axis] + (Number.isFinite(delta) ? delta : 0);
++      const clicks = Math.trunc(total / WHEEL_PIXELS);
++      wheelCarry[axis] = total - clicks * WHEEL_PIXELS;
++      const count = Math.min(Math.abs(clicks), MAX_WHEEL_CLICKS);
++      if (count > 0)
++        commands.push(`click --repeat ${count} --delay 8 ${clicks > 0 ? forward : back}`);
++    }
++    return commands.length > 1 ? { kind: "x", commands } : { kind: "none" };
++  }
++  // key
++  const keysym = keysymFor(message.key);
++  if (!keysym) {
++    // A character with no keysym of ours (an accented letter, a CJK character): deliver it as text
++    // on the way down, nothing on the way up.
++    if (message.event === "down" && message.text && !/[\u0000-\u001f]/.test(message.text))
++      return { kind: "text", text: message.text };
++    return { kind: "none" };
++  }
++  return {
++    kind: "x",
++    commands: [`${message.event === "down" ? "keydown" : "keyup"} ${keysym}`],
++  };
++}
++
++/** A pointer glide from `from` to `to` in `steps` moves, `stepMs` apart, so a stream shows it. */
++export function glideCommands(
++  from: { x: number; y: number },
++  to: { x: number; y: number },
++  screen: Screen,
++  steps = 8,
++  stepMs = 35,
++): string[] {
++  const commands: string[] = [];
++  for (let step = 1; step <= steps; step += 1) {
++    const t = step / steps;
++    // ease-out, so it slows into the target the way a hand does
++    const k = 1 - (1 - t) * (1 - t);
++    const x = clampTo(from.x + (to.x - from.x) * k, screen.width);
++    const y = clampTo(from.y + (to.y - from.y) * k, screen.height);
++    commands.push(`mousemove ${x} ${y}`);
++    if (step < steps) commands.push(`sleep ${(stepMs / 1000).toFixed(3)}`);
++  }
++  return commands;
++}
++
++/**
++ * The keys of a paste. `replace` selects everything first: the first text typed after tapping the
++ * address bar replaces what is there, as on a phone (Chrome selects it all on a click into an
++ * unfocused address bar, but not into one that already has focus).
++ */
++export function pasteCommands(replace = false): string[] {
++  return [...(replace ? ["key --clearmodifiers ctrl+a"] : []), "key --clearmodifiers ctrl+v"];
++}
++
++/** `getmouselocation` output: "x:12 y:34 screen:0 window:56". */
++export function parseMouseLocation(line: string): { x: number; y: number } | undefined {
++  const match = /^x:(-?\d+) y:(-?\d+)/.exec(line.trim());
++  return match ? { x: Number(match[1]), y: Number(match[2]) } : undefined;
++}
++
++/** The window name xdotool printed, or undefined for a pointer line or nothing. */
++export function parseWindowName(lines: string[]): string | undefined {
++  const named = lines.find((line) => line.length > 0 && !/^x:-?\d+ y:-?\d+/.test(line));
++  return named?.trim() || undefined;
++}
++
++const ACK_BUDGET_MS = 1_500;
++// Chromium's top-level window is named "<tab title> - Chromium"; the only window we look up.
++const WINDOW_NAME_COMMAND = "search --onlyvisible --limit 1 --name Chromium$ getwindowname";
++
++type Waiter = { resolve: (lines: string[]) => void; lines: string[]; timer: ReturnType<typeof setTimeout> };
++
++export type XInput = {
++  /**
++   * Write commands, then wait until xdotool has run them (it answers a trailing getmouselocation).
++   * Resolves with the pointer position afterwards; undefined when xdotool did not answer in time.
++   */
++  run(commands: string[]): Promise<{ x: number; y: number } | undefined>;
++  /** The name of Chromium's window, which carries the selected tab's title. */
++  windowName(): Promise<string | undefined>;
++  /** Put text on the clipboard and paste it where X focus is (the address bar, a dialog). */
++  paste(text: string, options?: { replace?: boolean }): Promise<void>;
++  stop(): void;
++};
++
++/** The one xdotool process for this computer, started on first use and again if it dies. */
++export function createXInput(): XInput {
++  let child: ChildProcess | undefined;
++  let buffer = "";
++  const waiting: Waiter[] = [];
++  let chain: Promise<unknown> = Promise.resolve();
++  let clearGeneration = 0;
++
++  const start = (): ChildProcess => {
++    if (child && child.exitCode === null && !child.killed) return child;
++    buffer = "";
++    const next = spawn("xdotool", ["-"], { stdio: ["pipe", "pipe", "ignore"] });
++    next.stdout?.setEncoding("utf8");
++    next.stdout?.on("data", (data: string) => {
++      buffer += data;
++      let newline = buffer.indexOf("\n");
++      while (newline >= 0) {
++        const line = buffer.slice(0, newline);
++        buffer = buffer.slice(newline + 1);
++        const waiter = waiting[0];
++        if (waiter) {
++          waiter.lines.push(line);
++          // A pointer line is always the last thing a request asks for.
++          if (parseMouseLocation(line)) {
++            waiting.shift();
++            clearTimeout(waiter.timer);
++            waiter.resolve(waiter.lines);
++          }
++        }
++        newline = buffer.indexOf("\n");
++      }
++    });
++    next.stdin?.on("error", () => undefined);
++    next.on("error", () => undefined);
++    next.on("exit", () => {
++      if (child === next) child = undefined;
++      for (const waiter of waiting.splice(0)) {
++        clearTimeout(waiter.timer);
++        waiter.resolve(waiter.lines);
++      }
++    });
++    child = next;
++    return next;
++  };
++
++  /** One request at a time, so answers are never matched to the wrong one. */
++  const request = (commands: string[]): Promise<string[]> => {
++    const work = chain.then(
++      () =>
++        new Promise<string[]>((resolve) => {
++          const process = start();
++          const waiter: Waiter = {
++            resolve,
++            lines: [],
++            timer: setTimeout(() => {
++              const at = waiting.indexOf(waiter);
++              if (at >= 0) waiting.splice(at, 1);
++              // Out of step now: a late answer would land on the next request. Start over.
++              process.kill("SIGKILL");
++              resolve(waiter.lines);
++            }, ACK_BUDGET_MS),
++          };
++          waiting.push(waiter);
++          process.stdin?.write(`${[...commands, "getmouselocation"].join("\n")}\n`);
++        }),
++    );
++    chain = work.catch(() => undefined);
++    return work;
++  };
++
++  const xclip = (text: string): Promise<void> =>
++    new Promise((resolve) => {
++      // All output ignored: xclip stays in the background serving the selection, and an inherited
++      // pipe would be held open by it for as long as it lives.
++      const clip = spawn("xclip", ["-selection", "clipboard", "-in"], {
++        stdio: ["pipe", "ignore", "ignore"],
++      });
++      clip.on("error", () => resolve());
++      clip.on("exit", () => resolve());
++      clip.stdin?.on("error", () => undefined);
++      clip.stdin?.end(text);
++    });
++
++  return {
++    async run(commands) {
++      const lines = await request(commands);
++      const last = lines.at(-1);
++      return last ? parseMouseLocation(last) : undefined;
++    },
++    async windowName() {
++      return parseWindowName(await request([WINDOW_NAME_COMMAND]));
++    },
++    async paste(text, options) {
++      const generation = ++clearGeneration;
++      await xclip(text);
++      await request(pasteCommands(options?.replace));
++      // The clipboard should not keep what was typed (a password, a code) longer than the paste
++      // takes. Chrome reads it when the key arrives; a second later it is replaced with nothing.
++      setTimeout(() => {
++        if (generation === clearGeneration) void xclip("");
++      }, 1_000).unref?.();
++    },
++    stop() {
++      child?.kill("SIGTERM");
++      child = undefined;
++    },
++  };
++}
+diff -ruN a/tests/window-cast.test.ts b/tests/window-cast.test.ts
+--- a/tests/window-cast.test.ts	1970-01-01 08:00:00
++++ b/tests/window-cast.test.ts	2026-10-28 00:00:00
+@@ -0,0 +1,276 @@
++// OpenDuet patch 0002: the whole-window live screen's pure parts and its capture lifecycle.
++import { describe, expect, test } from "bun:test";
++import { EventEmitter } from "node:events";
++import { PassThrough } from "node:stream";
++import type { ChildProcess } from "node:child_process";
++import { FrameDedup, JpegSplitter, jpegEnd } from "../src/jpeg-frames";
++import { screenFromEnv } from "../src/screen";
++import type { FrameMessage } from "../src/screencast";
++import { captureArgs, startWindowCast } from "../src/window-cast";
++import { contentOrigin, pageToScreen } from "../src/window-geometry";
++import {
++  glideCommands,
++  keysymFor,
++  pasteCommands,
++  parseMouseLocation,
++  parseWindowName,
++  planInput,
++  type XInput,
++} from "../src/x-input";
++
++/** A JPEG-shaped byte string: a DQT holding FF D9, stuffed FF 00 and a restart marker in the scan. */
++function fakeJpeg(tag: number): Uint8Array {
++  return Uint8Array.from([
++    0xff, 0xd8, // SOI
++    0xff, 0xe0, 0x00, 0x04, 0x4a, 0x46, // APP0, length 4
++    0xff, 0xdb, 0x00, 0x05, 0xff, 0xd9, tag, // DQT whose table bytes include FF D9
++    0xff, 0xda, 0x00, 0x03, 0x01, // SOS, length 3
++    0x12, 0xff, 0x00, 0x34, 0xff, 0xd0, 0x56, tag, // scan: stuffed FF, RST0
++    0xff, 0xd9, // EOI
++  ]);
++}
++
++describe("cutting Motion-JPEG into frames", () => {
++  test("a frame ends at the EOI after its scan, not at FF D9 inside a header", () => {
++    const jpeg = fakeJpeg(7);
++    expect(jpegEnd(jpeg, 0)).toBe(jpeg.length);
++    expect(jpegEnd(jpeg.slice(0, 14), 0)).toBe(-1);
++  });
++
++  test("frames split across chunks at every byte come out whole and in order", () => {
++    const stream = new Uint8Array([...fakeJpeg(1), ...fakeJpeg(2), ...fakeJpeg(3)]);
++    for (let cut = 1; cut < stream.length; cut += 1) {
++      const splitter = new JpegSplitter();
++      const frames = [...splitter.push(stream.slice(0, cut)), ...splitter.push(stream.slice(cut))];
++      expect(frames.map((f) => f.at(-3))).toEqual([1, 2, 3]);
++    }
++  });
++
++  test("garbage before a frame is skipped", () => {
++    const splitter = new JpegSplitter();
++    const frames = splitter.push(new Uint8Array([0x00, 0xff, 0x12, ...fakeJpeg(9)]));
++    expect(frames).toHaveLength(1);
++    expect(frames[0]![0]).toBe(0xff);
++  });
++
++  test("an unchanged frame is a repeat; a changed one is not", () => {
++    const dedup = new FrameDedup();
++    expect(dedup.isRepeat(fakeJpeg(1))).toBe(false);
++    expect(dedup.isRepeat(fakeJpeg(1))).toBe(true);
++    expect(dedup.isRepeat(fakeJpeg(2))).toBe(false);
++  });
++});
++
++const SCREEN = screenFromEnv({});
++
++describe("a person's input as xdotool commands", () => {
++  test("a press moves, then presses, and says where it landed", () => {
++    expect(
++      planInput({ type: "mouse", event: "pressed", x: 120.4, y: 33.6, button: "left" }, SCREEN),
++    ).toEqual({ kind: "x", commands: ["mousemove 120 34", "mousedown 1"], pressedAt: { x: 120, y: 34 } });
++    expect(planInput({ type: "mouse", event: "released", x: 5, y: 5, button: "right" }, SCREEN)).toEqual({
++      kind: "x",
++      commands: ["mousemove 5 5", "mouseup 3"],
++    });
++  });
++
++  test("coordinates are clamped to the screen", () => {
++    const plan = planInput({ type: "mouse", event: "moved", x: -40, y: 99999 }, SCREEN);
++    expect(plan).toEqual({ kind: "x", commands: ["mousemove 0 1599"] });
++  });
++
++  test("the wheel becomes whole clicks, carrying the remainder", () => {
++    const carry = { x: 0, y: 0 };
++    expect(planInput({ type: "wheel", x: 430, y: 800, deltaX: 0, deltaY: 300 }, SCREEN, carry)).toEqual({
++      kind: "x",
++      commands: ["mousemove 430 800", "click --repeat 2 --delay 8 5"],
++    });
++    expect(carry.y).toBe(60);
++    expect(planInput({ type: "wheel", x: 430, y: 800, deltaX: 0, deltaY: 60 }, SCREEN, carry)).toEqual({
++      kind: "x",
++      commands: ["mousemove 430 800", "click --repeat 1 --delay 8 5"],
++    });
++    expect(planInput({ type: "wheel", x: 0, y: 0, deltaX: -120, deltaY: 0 }, SCREEN, carry)).toEqual({
++      kind: "x",
++      commands: ["mousemove 0 0", "click --repeat 1 --delay 8 6"],
++    });
++  });
++
++  test("keys go by keysym; nothing a person sends reaches xdotool as text", () => {
++    expect(keysymFor("Enter")).toBe("Return");
++    expect(keysymFor("Backspace")).toBe("BackSpace");
++    expect(keysymFor("a")).toBe("a");
++    expect(keysymFor(".")).toBe("period");
++    expect(keysymFor("exec")).toBeUndefined();
++    expect(keysymFor("a b")).toBeUndefined();
++    expect(planInput({ type: "key", event: "down", key: "Enter", code: "Enter" }, SCREEN)).toEqual({
++      kind: "x",
++      commands: ["keydown Return"],
++    });
++    expect(planInput({ type: "key", event: "up", key: "ArrowLeft", code: "ArrowLeft" }, SCREEN)).toEqual({
++      kind: "x",
++      commands: ["keyup Left"],
++    });
++    // A key with no keysym of ours that carries a character is typed as text.
++    expect(planInput({ type: "key", event: "down", key: "é", code: "KeyE", text: "é" }, SCREEN)).toEqual({
++      kind: "text",
++      text: "é",
++    });
++    expect(planInput({ type: "key", event: "down", key: "\nexec sh", code: "" }, SCREEN)).toEqual({ kind: "none" });
++    expect(planInput({ type: "text", text: "你好 world" }, SCREEN)).toEqual({ kind: "text", text: "你好 world" });
++  });
++
++  test("a glide ends on the target and stays on the screen", () => {
++    const commands = glideCommands({ x: 0, y: 0 }, { x: 400, y: 900 }, SCREEN, 4, 30);
++    expect(commands.at(-1)).toBe("mousemove 400 900");
++    expect(commands.filter((c) => c.startsWith("sleep"))).toEqual(["sleep 0.030", "sleep 0.030", "sleep 0.030"]);
++  });
++
++  test("a paste after a tap on the address bar selects what is there first", () => {
++    expect(pasteCommands()).toEqual(["key --clearmodifiers ctrl+v"]);
++    expect(pasteCommands(true)).toEqual(["key --clearmodifiers ctrl+a", "key --clearmodifiers ctrl+v"]);
++  });
++
++  test("xdotool's answers", () => {
++    expect(parseMouseLocation("x:12 y:34 screen:0 window:56")).toEqual({ x: 12, y: 34 });
++    expect(parseMouseLocation("Tab A - Chromium")).toBeUndefined();
++    expect(parseWindowName(["Tab A - Chromium", "x:1 y:2 screen:0 window:3"])).toBe("Tab A - Chromium");
++    expect(parseWindowName(["x:1 y:2 screen:0 window:3"])).toBeUndefined();
++  });
++});
++
++describe("where the page sits on the X screen", () => {
++  // Measured: portrait screen, Chromium 151, tab strip + toolbar = 87 DIP.
++  const metrics = { screenX: 0, screenY: 0, outerWidth: 500, outerHeight: 932, innerWidth: 500, innerHeight: 845, devicePixelRatio: 1.72 };
++
++  test("the content begins below the browser's own UI", () => {
++    expect(contentOrigin(metrics)).toEqual({ x: 0, y: 150 });
++  });
++
++  test("a CSS px in the page is devicePixelRatio X pixels from the content origin", () => {
++    expect(pageToScreen(metrics, { x: 100, y: 10 })).toEqual({ x: 172, y: 167 });
++  });
++});
++
++function fakeCapture() {
++  const spawned: string[][] = [];
++  const children: Array<ChildProcess & { stdout: PassThrough; killedWith: string[] }> = [];
++  const spawnCapture = (args: string[]) => {
++    spawned.push(args);
++    const child = Object.assign(new EventEmitter(), {
++      stdout: new PassThrough(),
++      stderr: new PassThrough(),
++      exitCode: null as number | null,
++      signalCode: null as string | null,
++      killedWith: [] as string[],
++      kill(signal: string) {
++        child.killedWith.push(signal);
++        child.signalCode = signal;
++        queueMicrotask(() => child.emit("exit", null, signal));
++        return true;
++      },
++    });
++    children.push(child as never);
++    return child as unknown as ChildProcess;
++  };
++  return { spawned, children, spawnCapture };
++}
++
++const noInput: XInput = {
++  run: async () => ({ x: 0, y: 0 }),
++  windowName: async () => undefined,
++  paste: async () => {},
++  stop: () => {},
++};
++
++describe("the window capture", () => {
++  test("grabs the X screen with the pointer and writes Motion-JPEG to stdout", () => {
++    const args = captureArgs(":0", SCREEN);
++    expect(args.join(" ")).toContain("-f x11grab -draw_mouse 1 -framerate 8 -video_size 860x1600 -i :0");
++    // No frame-dropping filter: it held back the first frame of a still screen.
++    expect(args).not.toContain("-vf");
++    expect(args.slice(-3)).toEqual(["-f", "mjpeg", "pipe:1"]);
++  });
++
++  test("starts one capture, sends page-cast frames at the screen's size, skips repeats, stops it", async () => {
++    const fake = fakeCapture();
++    const frames: FrameMessage[] = [];
++    const cast = startWindowCast({
++      display: ":0",
++      screen: SCREEN,
++      input: noInput,
++      page: async () => {
++        throw new Error("no page needed");
++      },
++      onFrame: (frame) => frames.push(frame),
++      spawnCapture: fake.spawnCapture,
++    });
++    expect(fake.spawned).toHaveLength(1);
++    const child = fake.children[0]!;
++    child.stdout.write(Buffer.from([...fakeJpeg(1), ...fakeJpeg(1), ...fakeJpeg(2)]));
++    await new Promise((resolve) => setTimeout(resolve, 5));
++    expect(frames).toHaveLength(2);
++    expect(frames[0]).toMatchObject({ type: "frame", width: 860, height: 1600 });
++    expect(Buffer.from(frames[0]!.data, "base64")).toEqual(Buffer.from(fakeJpeg(1)));
++    await cast.stop();
++    expect(child.killedWith).toEqual(["SIGTERM"]);
++    await cast.stop();
++    expect(fake.spawned).toHaveLength(1);
++  });
++
++  test("input is applied in order: a press then text, through the clipboard when the UI has focus", async () => {
++    const fake = fakeCapture();
++    const log: string[] = [];
++    const input: XInput = {
++      run: async (commands) => {
++        log.push(...commands);
++        return { x: 0, y: 0 };
++      },
++      windowName: async () => undefined,
++      paste: async (text, options) => {
++        log.push(`paste${options?.replace ? "(replace)" : ""}:${text}`);
++      },
++      stop: () => {},
++    };
++    const page = {
++      evaluate: async () => ({ screenX: 0, screenY: 0, outerWidth: 500, outerHeight: 932, innerWidth: 500, innerHeight: 845, devicePixelRatio: 1.72 }),
++      keyboard: { insertText: async (text: string) => log.push(`insert:${text}`) },
++    };
++    const cast = startWindowCast({
++      display: ":0",
++      screen: SCREEN,
++      input,
++      page: async () => page as never,
++      onFrame: () => {},
++      spawnCapture: fake.spawnCapture,
++    });
++    // The address bar (the toolbar: below the tab strip at y 69, above the content at y 150): the
++    // first text replaces the address, the next appends. Enter, the page, text there. The tab strip
++    // ("+"): pasted as it is.
++    void cast.send({ type: "mouse", event: "pressed", x: 300, y: 100, button: "left" });
++    void cast.send({ type: "mouse", event: "released", x: 300, y: 100, button: "left" });
++    void cast.send({ type: "text", text: "exa" });
++    void cast.send({ type: "text", text: "mple.com" });
++    void cast.send({ type: "key", event: "down", key: "Enter", code: "Enter" });
++    void cast.send({ type: "mouse", event: "pressed", x: 300, y: 900, button: "left" });
++    void cast.send({ type: "text", text: "你好" });
++    void cast.send({ type: "mouse", event: "pressed", x: 500, y: 30, button: "left" });
++    await cast.send({ type: "text", text: "b.example" });
++    expect(log).toEqual([
++      "mousemove 300 100",
++      "mousedown 1",
++      "mousemove 300 100",
++      "mouseup 1",
++      "paste(replace):exa",
++      "paste:mple.com",
++      "keydown Return",
++      "mousemove 300 900",
++      "mousedown 1",
++      "insert:你好",
++      "mousemove 500 30",
++      "mousedown 1",
++      "paste:b.example",
++    ]);
++    await cast.stop();
++  });
++});

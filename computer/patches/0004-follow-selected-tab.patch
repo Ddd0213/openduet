@@ -1,0 +1,302 @@
+OpenDuet patch for CopilotKit/OpenBot agent-computer (MIT) at da9a3caf5784074baa779110dd7e9d1338c8871b.
+Window mode: the Bot follows the tab the person picked in Chrome's tab strip (read from the window name).
+Applied in /app by computer/Dockerfile: patch -p1 --forward --fuzz=0. Regenerated with diff -ruN.
+
+diff -ruN a/src/index.ts b/src/index.ts
+--- a/src/index.ts	2026-10-28 00:00:00
++++ b/src/index.ts	2026-10-28 00:00:00
+@@ -66,6 +66,8 @@
+ } from "./sign-in";
+ import { startVirtualDisplay } from "./virtual-display";
+ import { startWindowCast } from "./window-cast";
++import { within } from "./window-geometry";
++import { pickShownPage } from "./live-page";
+ import { createXInput } from "./x-input";
+ import { applyWebBotAuthPush } from "./web-bot-auth";
+ import {
+@@ -304,6 +306,26 @@
+     if (sessions.get(botId)) sessions.renewRun(botId);
+     await sessions.get(botId)?.viewer.releaseAll(COMPUTER_STOPPED);
+   },
++  // OpenDuet patch 0004: in window mode the tab in front is read from Chromium's window name, and
++  // only while a person holds the wheel: nobody else switches tabs, and the Bot's own clicks must
++  // not move it to another tab that happens to share a title.
++  X_INPUT
++    ? {
++        shownPage: async (botId, pages) => {
++          if (!sessions.get(botId)?.control.humanMayDrive()) return undefined;
++          const name = await X_INPUT.windowName();
++          if (!name) return undefined;
++          const titled = await Promise.all(
++            pages.map(async (page) => ({
++              page,
++              title: (await within(page.title(), 300)) ?? null,
++              url: page.url(),
++            })),
++          );
++          return pickShownPage(name, titled);
++        },
++      }
++    : {},
+ );
+ 
+ /**
+@@ -1039,6 +1061,8 @@
+         }
+         if (url.pathname === "/control/cancel")
+           return json(session.control.cancel(body.requestId));
++        // OpenDuet patch 0004: while the person still holds the wheel, take the tab they left in front.
++        await within(profiles.followShown(botId), 1_000);
+         return json(session.control.release(body.requestId));
+       }
+ 
+diff -ruN a/src/live-page.ts b/src/live-page.ts
+--- a/src/live-page.ts	2026-10-28 00:00:00
++++ b/src/live-page.ts	2026-10-28 00:00:00
+@@ -14,3 +14,60 @@
+   }
+   return undefined;
+ }
++
++/*
++ * OpenDuet patch (computer/patches/0004): in window mode a person can pick any tab in Chrome's own
++ * tab strip, and the Bot follows the tab in front rather than the newest one.
++ */
++
++/**
++ * The page to follow after pages opened or closed, in window mode: a page that just opened (a
++ * popup, a link opened in a new tab: Chrome puts those in front), else the one followed until now
++ * while it is still open, else the newest open one.
++ */
++export function chooseFollowedPage<T extends OpenPage>(
++  opened: readonly T[],
++  current: T | undefined,
++  justOpened?: T,
++): T | undefined {
++  if (justOpened && !justOpened.isClosed() && opened.includes(justOpened))
++    return justOpened;
++  if (current && !current.isClosed() && opened.includes(current)) return current;
++  return chooseLivePage(opened);
++}
++
++export type TitledPage<T> = { page: T; title: string | null; url: string };
++
++/**
++ * The tab in front, believed only when two reads `gapMs` apart agree. Chromium renames its window a
++ * moment after a page's title changes, so a single read taken while a page navigates can name the
++ * previous title, which another tab may also have.
++ */
++export async function confirmShown<T>(
++  read: () => Promise<T | undefined>,
++  gapMs = 150,
++): Promise<T | undefined> {
++  const first = await read();
++  if (first === undefined) return undefined;
++  await new Promise((resolve) => setTimeout(resolve, gapMs));
++  return (await read()) === first ? first : undefined;
++}
++
++/**
++ * Which page is the tab in front, from the name of Chromium's window ("<tab title> - Chromium").
++ * Undefined when the name matches none of them, or several and none is the one already followed:
++ * a guess would move the Bot to a page nobody chose.
++ */
++export function pickShownPage<T>(
++  windowName: string,
++  pages: readonly TitledPage<T>[],
++  current?: T,
++): T | undefined {
++  const shown = windowName.replace(/ - Chromium$/, "");
++  if (!shown || shown === windowName) return undefined;
++  const matches = pages.filter(({ title, url }) =>
++    title ? title === shown : url === shown || url.replace(/^[a-z]+:\/\//, "").startsWith(shown),
++  );
++  if (matches.some(({ page }) => page === current)) return current;
++  return matches.length === 1 ? matches[0]!.page : undefined;
++}
+diff -ruN a/src/profiles.ts b/src/profiles.ts
+--- a/src/profiles.ts	2026-10-28 00:00:00
++++ b/src/profiles.ts	2026-10-28 00:00:00
+@@ -41,7 +41,7 @@
+ import { browserRuntimeFromEnv } from "./browser-runtime";
+ import { egressFor, egressLabel } from "./egress";
+ import { numberFromEnv, settleWithin } from "./env";
+-import { chooseLivePage } from "./live-page";
++import { chooseFollowedPage, chooseLivePage, confirmShown } from "./live-page";
+ import { attachBrowserNetwork, attachPageNetwork } from "./page-network";
+ import { botIdsIn } from "./profile-listing";
+ import { isWindowMode, screenFromEnv, windowArgs } from "./screen";
+@@ -285,7 +285,18 @@
+  */
+ export type BrowserClosed = (botId: string) => void | Promise<void>;
+ 
+-export function createProfiles(root: string, onClosed: BrowserClosed) {
++/**
++ * OpenDuet patch 0004: which of these pages is the tab in front of the person, or undefined when
++ * that cannot be told or should not be asked (nobody is driving: only a person switches tabs).
++ * Given in window mode, where a person picks tabs in Chrome's own tab strip.
++ */
++export type ShownPage = (botId: string, pages: Page[]) => Promise<Page | undefined>;
++
++export function createProfiles(
++  root: string,
++  onClosed: BrowserClosed,
++  options: { shownPage?: ShownPage } = {},
++) {
+   type LiveBrowser = {
+     context: BrowserContext;
+     page: Page;
+@@ -293,7 +304,9 @@
+     /** When this Bot last asked for its page. Decides what the cap and the sweep close. */
+     usedAt: number;
+     /** Point `page` at whatever is open now. Called on every page opening and closing. */
+-    retarget: () => void;
++    retarget: (justOpened?: Page) => void;
++    /** Window mode: point `page` at the tab the person has in front. */
++    follow: (shown: ShownPage) => Promise<void>;
+     /** Keeps this browser's session cookies on the profile volume. Absent for a native Chrome. */
+     sessionCookies?: SessionCookieKeeper;
+   };
+@@ -463,6 +476,7 @@
+       ) {
+         // Touched on every use, which is what makes "least recently used" mean anything.
+         existing.usedAt = Date.now();
++        if (options.shownPage) await existing.follow(options.shownPage);
+         return existing.page;
+       }
+       if (existing) {
+@@ -547,25 +561,43 @@
+           startedAt: new Date().toISOString(),
+           usedAt: Date.now(),
+           retarget: () => {},
++          follow: async () => {},
+           ...(sessionCookies ? { sessionCookies } : {}),
+         };
+-        record.retarget = () => {
+-          const next = chooseLivePage(context.pages());
+-          if (!next || next === record.page) return;
++        const moveTo = (next: Page, reason?: string) => {
+           record.page = next;
+           console.info(
+             JSON.stringify({
+               type: "computer-page-changed",
+               botId,
+               url: next.url(),
++              ...(reason ? { reason } : {}),
+             }),
+           );
+         };
++        record.retarget = (justOpened) => {
++          // OpenDuet patch 0004: in window mode a page the person moved to is kept until it closes;
++          // only a page that just opened takes over. Elsewhere the newest page, as upstream.
++          const next = WINDOW_MODE
++            ? chooseFollowedPage(context.pages(), record.page, justOpened)
++            : chooseLivePage(context.pages());
++          if (!next || next === record.page) return;
++          moveTo(next);
++        };
++        record.follow = async (shown) => {
++          const open = context.pages().filter((candidate) => !candidate.isClosed());
++          if (open.length < 2) return;
++          const front = await confirmShown(() =>
++            shown(botId, open).catch(() => undefined),
++          );
++          if (!front || front === record.page || front.isClosed()) return;
++          moveTo(front, "the tab in front changed");
++        };
+         // Without this the Bot stays pinned to the page it launched with, so a sign-in the site opens
+         // in a new window is neither shown to the person taking the wheel nor reachable by input.
+         context.on("page", (opened) => {
+           if (!LOCAL_CHROME) void attachPageNetwork(context, opened, network);
+-          record.retarget();
++          record.retarget(opened);
+           // A popup closes itself when it succeeds, and the record must move back to the opener
+           // rather than leave a closed page to be read as a dead browser.
+           opened.on("close", () => record.retarget());
+@@ -668,6 +700,15 @@
+       // Written before the close, so a pod deleted by a suspend or an image update keeps its sign-ins.
+       await Promise.all(entries.map(([, c]) => keepSessionCookies(c)));
+       await Promise.all(entries.map(([, c]) => closeAndWait(c.context)));
++    },
++
++    /**
++     * OpenDuet patch 0004: follow the tab in front now, without starting anything. Called as a
++     * person hands back, so a tab picked just before is the one the Bot carries on in.
++     */
++    async followShown(botId: string): Promise<void> {
++      const running = live.get(botId);
++      if (running && options.shownPage) await running.follow(options.shownPage);
+     },
+ 
+     /** How many browsers are running. For the idle sweep's own tests, and for a status reader. */
+diff -ruN a/tests/followed-page.test.ts b/tests/followed-page.test.ts
+--- a/tests/followed-page.test.ts	1970-01-01 08:00:00
++++ b/tests/followed-page.test.ts	2026-10-28 00:00:00
+@@ -0,0 +1,67 @@
++// OpenDuet patch 0004: in window mode the Bot follows the tab the person has in front.
++import { describe, expect, test } from "bun:test";
++import { chooseFollowedPage, confirmShown, pickShownPage } from "../src/live-page";
++
++const page = (name: string, closed = false) => ({ name, isClosed: () => closed });
++
++describe("the page followed in window mode", () => {
++  test("a page that just opened takes over", () => {
++    const a = page("a"), b = page("b");
++    expect(chooseFollowedPage([a, b], a, b)).toBe(b);
++  });
++
++  test("otherwise the page followed until now stays, even when it is not the newest", () => {
++    const a = page("a"), b = page("b"), c = page("c");
++    expect(chooseFollowedPage([a, b, c], a)).toBe(a);
++  });
++
++  test("when it closes, the newest open page", () => {
++    const a = page("a", true), b = page("b"), c = page("c");
++    expect(chooseFollowedPage([a, b, c], a)).toBe(c);
++    expect(chooseFollowedPage([b, c], a)).toBe(c);
++  });
++});
++
++describe("the tab in front, from Chromium's window name", () => {
++  const a = page("a"), b = page("b"), c = page("c");
++  const pages = [
++    { page: a, title: "Tab A", url: "https://a.example/" },
++    { page: b, title: "Tab B", url: "https://b.example/" },
++    { page: c, title: "", url: "about:blank" },
++  ];
++
++  test("by title", () => {
++    expect(pickShownPage("Tab B - Chromium", pages)).toBe(b);
++    expect(pickShownPage("Tab A - Chromium", pages)).toBe(a);
++  });
++
++  test("an untitled tab is named by its address", () => {
++    expect(pickShownPage("about:blank - Chromium", pages)).toBe(c);
++  });
++
++  test("no match, or a name that is not Chromium's, tells nothing", () => {
++    expect(pickShownPage("Something else - Chromium", pages)).toBeUndefined();
++    expect(pickShownPage("Tab A", pages)).toBeUndefined();
++  });
++
++  test("two tabs with the same title: the followed one if it is one of them, else no guess", () => {
++    const twins = [
++      { page: a, title: "Inbox", url: "https://a.example/" },
++      { page: b, title: "Inbox", url: "https://b.example/" },
++    ];
++    expect(pickShownPage("Inbox - Chromium", twins, b)).toBe(b);
++    expect(pickShownPage("Inbox - Chromium", twins)).toBeUndefined();
++  });
++});
++
++describe("believing the window name", () => {
++  test("only when two reads agree", async () => {
++    const reads = ["b", "b"];
++    expect(await confirmShown(async () => reads.shift(), 1)).toBe("b");
++    const flip = ["a", "b"];
++    expect(await confirmShown(async () => flip.shift(), 1)).toBeUndefined();
++    let asked = 0;
++    expect(await confirmShown(async () => { asked += 1; return undefined; }, 1)).toBeUndefined();
++    expect(asked).toBe(1);
++  });
++});

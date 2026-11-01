@@ -1,0 +1,92 @@
+{
+  "TaskList": {
+    "tasks": [
+      { "id": "task_1", "channelId": "ch_main", "title": "Conference sign-up", "status": "needs_input", "source": "user",
+        "latestUpdate": { "text": { "key": "task.paused_restart" }, "source": "Claude", "at": "2026-10-25T09:00:00.000Z" },
+        "updateCount": 3, "schedule": null, "archived": false, "createdAt": "2026-10-25T08:50:04.000Z", "updatedAt": "2026-10-25T09:00:00.000Z" },
+      { "id": "task_4", "channelId": "ch_q4", "title": "Weekly hiring pipeline digest", "status": "scheduled", "source": "user",
+        "latestUpdate": null, "updateCount": 0, "schedule": { "cadence": "weekly", "hour": 9, "minute": 0, "weekday": 1 },
+        "archived": false, "createdAt": "2026-10-25T09:20:00.000Z", "updatedAt": "2026-10-25T09:20:00.000Z" },
+      { "id": "task_5", "channelId": "ch_main", "title": "Morning brief", "status": "scheduled", "source": "user",
+        "latestUpdate": null, "updateCount": 0, "schedule": { "cadence": "daily", "hour": 9, "minute": 0 },
+        "archived": false, "pinned": false,
+        "routine": { "paused": false, "quiet": false, "nextRunAt": "2026-10-26T01:00:00.000Z", "lastRunAt": "2026-10-25T01:00:02.000Z", "lastRunStatus": "completed" },
+        "createdAt": "2026-10-24T12:00:00.000Z", "updatedAt": "2026-10-25T01:00:30.000Z" },
+      { "id": "task_6", "channelId": "ch_main", "title": "Launch checklist", "status": "working", "source": "user",
+        "latestUpdate": { "text": { "text": "Checked the QA sheet." }, "source": "Claude", "at": "2026-10-25T10:10:00.000Z" },
+        "updateCount": 1, "schedule": null, "archived": false, "pinned": true, "routine": null,
+        "createdAt": "2026-10-25T10:00:00.000Z", "updatedAt": "2026-10-25T10:10:00.000Z" }
+    ]
+  },
+  "TaskDetail": {
+    "id": "task_2", "channelId": "ch_main", "title": "Reply to the Northfield thread", "status": "ready_for_review", "source": "proactive",
+    "latestUpdate": { "text": { "text": "Drafted a reply for you to review." }, "source": "Gmail", "at": "2026-10-25T09:05:00.000Z" },
+    "updateCount": 2, "schedule": null, "archived": false, "createdAt": "2026-10-25T08:44:00.000Z", "updatedAt": "2026-10-25T09:05:00.000Z",
+    "prompt": "Draft a reply to the Northfield renewal email",
+    "description": "Sam asked for a decision on the renewal by Friday. I drafted a reply that confirms and asks for the updated quote.",
+    "noticedAt": "2026-10-25T08:44:00.000Z",
+    "steps": [
+      { "id": "st1", "text": "Read the Northfield thread", "state": "done" },
+      { "id": "st2", "text": "Draft the reply", "state": "done" },
+      { "id": "st3", "text": "Wait for your approval to send", "state": "current" }
+    ],
+    "updates": [
+      { "text": { "text": "Found the renewal thread from Sam." }, "source": "Gmail", "at": "2026-10-25T08:45:00.000Z" },
+      { "text": { "text": "Drafted a reply for you to review." }, "source": "Gmail", "at": "2026-10-25T09:05:00.000Z" }
+    ],
+    "resources": [
+      { "title": "Re: Northfield renewal", "type": "email", "link": "https://mail.google.com/mail/u/0/#inbox/abc", "app": "Gmail" },
+      { "title": "Claude's browser", "type": "browser", "link": "duet://computer", "app": null }
+    ]
+  },
+  "CreateTaskRequest": { "prompt": "Find three venues for the offsite under $5k", "channelId": "ch_main" },
+  "UpdateTaskRequest": [
+    { "status": "resolved" }, { "archived": true }, { "pinned": true }, { "paused": true },
+    { "schedule": { "cadence": "weekdays", "hour": 8, "minute": 30 }, "title": "Weekday brief" },
+    { "title": "Offsite venues" }
+  ],
+  "RoutineRuns": { "runs": [
+    { "id": "run_20", "kind": "routine", "scheduledFor": "2026-10-25T01:00:00.000Z", "startedAt": "2026-10-25T01:00:02.000Z", "status": "completed" },
+    { "id": "run_19", "kind": "routine", "scheduledFor": "2026-10-24T01:00:00.000Z", "startedAt": null, "status": "skipped" }
+  ] },
+  "ScheduleInfo": {
+    "builtins": false,
+    "weekendsOn": false,
+    "brief": { "time": { "hour": 8, "minute": 19 }, "nextRunAt": "2026-10-26T15:19:00.000Z",
+      "history": [{ "id": "run_1", "kind": "brief", "scheduledFor": "2026-10-23T15:19:00.000Z", "startedAt": "2026-10-23T15:19:01.000Z", "status": "completed" }] },
+    "checkin": {
+      "times": [{ "hour": 10, "minute": 49 }, { "hour": 13, "minute": 49 }, { "hour": 16, "minute": 49 }, { "hour": 19, "minute": 49 }, { "hour": 22, "minute": 49 }],
+      "nextRunAt": "2026-10-26T17:49:00.000Z",
+      "history": [
+        { "id": "run_2", "kind": "checkin", "scheduledFor": "2026-10-23T20:49:00.000Z", "startedAt": "2026-10-23T20:49:02.000Z", "status": "resolved" },
+        { "id": "run_3", "kind": "checkin", "scheduledFor": "2026-10-23T23:49:00.000Z", "startedAt": null, "status": "skipped" }
+      ]
+    }
+  },
+  "RunNowRequest": { "kind": "checkin" },
+  "RunNowResponse": { "run": { "id": "run_4", "kind": "checkin", "scheduledFor": null, "startedAt": "2026-10-25T10:00:00.000Z", "status": "running" } },
+  "UpNext": {
+    "scanning": false,
+    "suggestions": [{ "id": "sug_1", "channelId": null, "title": "Send the invoice to Northfield", "body": "Sam asked for it on Thursday.", "app": "Gmail", "origin": "checkin", "createdAt": "2026-10-25T10:49:00.000Z" }]
+  },
+  "AddSuggestionResponse": { "task": { "id": "task_5", "channelId": "ch_main", "title": "Send the invoice to Northfield", "status": "working", "source": "proactive",
+    "latestUpdate": null, "updateCount": 0, "schedule": null, "archived": false, "createdAt": "2026-10-25T10:50:00.000Z", "updatedAt": "2026-10-25T10:50:00.000Z" } },
+  "ApprovalDecisionRequest": { "version": 2 },
+  "ApprovalDecisionResponse": [
+    { "approval": { "id": "apr_1", "kind": "email", "status": "approved", "version": 2, "expiresAt": null, "taskId": "task_2", "messageId": "msg_approval",
+      "preview": { "kind": "email", "app": "Gmail", "to": ["sam@example.com"], "cc": [], "subject": "Re: Northfield renewal", "body": "Hi Sam, ...", "attachments": [{ "name": "quote.pdf", "mime": "application/pdf", "fileId": "file_2" }] },
+      "result": { "ok": true, "error": null }, "changedFields": [], "updatedAt": "2026-10-25T09:06:00.000Z" } },
+    { "approval": { "id": "apr_3", "kind": "payment", "status": "pending", "version": 1, "expiresAt": "2026-10-25T10:08:00.000Z", "taskId": null, "messageId": "msg_pay",
+      "preview": { "kind": "payment", "amount": 64000, "currency": "USD", "merchant": "Hotel Nikko", "description": "2 nights, May 12 to 14", "testMode": true },
+      "result": { "ok": false, "error": { "key": "approval.failed", "params": { "reason": { "type": "text", "value": "Card declined" } } } }, "changedFields": [], "updatedAt": "2026-10-25T10:01:00.000Z" } },
+    { "approval": { "id": "apr_4", "kind": "action", "status": "declined", "version": 1, "expiresAt": null, "taskId": null, "messageId": "msg_act",
+      "preview": { "kind": "action", "app": "Google Calendar", "toolName": "Create calendar event", "rows": [{ "label": "Title", "value": "Evals review" }, { "label": "When", "value": "Tue Oct 20, 1:45 to 2:30pm" }] },
+      "result": null, "changedFields": [], "updatedAt": "2026-10-25T10:02:00.000Z" } },
+    { "approval": { "id": "apr_5", "kind": "sign", "status": "expired", "version": 1, "expiresAt": "2026-10-25T10:00:00.000Z", "taskId": null, "messageId": "msg_sign",
+      "preview": { "kind": "sign", "app": "DocuSign", "title": "Northfield MSA", "rows": [{ "label": "From", "value": "Sam Lee" }] },
+      "result": null, "changedFields": [], "updatedAt": "2026-10-25T10:00:00.000Z" } },
+    { "approval": { "id": "apr_6", "kind": "delete", "status": "pending", "version": 1, "expiresAt": null, "taskId": null, "messageId": "msg_del",
+      "preview": { "kind": "delete", "app": "Google Drive", "title": "Old launch drafts", "rows": [{ "label": "Files", "value": "12" }] },
+      "result": null, "changedFields": [], "updatedAt": "2026-10-25T10:03:00.000Z" } }
+  ]
+}
