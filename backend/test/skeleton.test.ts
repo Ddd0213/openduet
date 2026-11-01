@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { createApp } from "../src/app.ts";
 import { ConfigError, loadConfig } from "../src/config.ts";
 import { ApiError } from "../src/contract/index.ts";
-import type { Db } from "../src/db.ts";
+import { sqliteUrl, type Db } from "../src/db.ts";
 import { REDACTED, redact } from "../src/log.ts";
 import en from "../src/i18n/en.json";
 import zh from "../src/i18n/zh-Hans.json";
@@ -70,6 +70,15 @@ describe("app", () => {
       "SELECT COUNT(*) AS n FROM _prisma_migrations WHERE finished_at IS NOT NULL;",
     );
     expect(Number(applied[0]?.n)).toBe(migrations.length);
+  });
+
+  test("one connection: concurrent queries all see synchronous = NORMAL; an explicit connection_limit is kept", async () => {
+    expect(sqliteUrl("file:/data/db/duet.db")).toBe("file:/data/db/duet.db?connection_limit=1");
+    expect(sqliteUrl("file:./test.db?socket_timeout=10")).toBe("file:./test.db?socket_timeout=10&connection_limit=1");
+    expect(sqliteUrl("file:./test.db?connection_limit=4")).toBe("file:./test.db?connection_limit=4");
+    // 1 = NORMAL, set in openDatabase. With the default pool some connections answered 2 (FULL).
+    const rows = await Promise.all(Array.from({ length: 12 }, () => db.$queryRawUnsafe<Record<string, bigint | number>[]>("PRAGMA synchronous;")));
+    expect(new Set(rows.map((row) => Number(Object.values(row[0] ?? {})[0])))).toEqual(new Set([1]));
   });
 
   test("unknown routes answer with the ApiError shape", async () => {

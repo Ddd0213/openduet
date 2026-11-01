@@ -119,6 +119,7 @@ export class ComputerService {
   private readonly alerted = new Set<string>();
   private readonly pauses = new Map<string, Pause>();
   private lastEmitted = "";
+  private emitting: Promise<void> = Promise.resolve();
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly now: () => number;
   private readonly probeAfterMs: number;
@@ -241,15 +242,24 @@ export class ComputerService {
     this.owner = userId;
   }
 
-  /** Emits `computer` to the owner (and the user in control) and tells the stream sockets, when something changed. */
+  /**
+   * Emits `computer` to the owner (and the user in control) and tells the stream sockets, when something changed.
+   * An unchanged state waits for the last emit, so `await changed()` after a fire-and-forget one (noteBar)
+   * still means the event is stored.
+   */
   async changed(): Promise<void> {
     const state = this.state();
     const text = JSON.stringify(state);
-    if (text === this.lastEmitted) return;
+    if (text === this.lastEmitted) return this.emitting;
     this.lastEmitted = text;
     for (const listener of this.listeners) {
       try { listener(state); } catch { /* a closed socket */ }
     }
+    this.emitting = this.emitState(state);
+    return this.emitting;
+  }
+
+  private async emitState(state: ComputerState): Promise<void> {
     for (const userId of new Set([this.owner, this.holder].filter((u): u is string => !!u))) {
       await this.deps.events.emit(userId, null, "computer", { computer: state }).catch((error: unknown) => {
         log.warn("computer event failed", { error: { name: (error as Error)?.name ?? "Error" } });
