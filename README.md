@@ -28,6 +28,8 @@
 
 <p align="center"><sub>OpenDuet is an independent project, not affiliated with Anthropic.</sub></p>
 
+https://github.com/user-attachments/assets/152ac85d-f14f-4991-a39b-05f97abeb0b4
+
 ## What it is
 
 The backend and OpenDuet's own computer run on your server, and the iPhone app is the remote control. Work keeps running on the server while your phone is away. Unlike the original, it works with any model, and you can watch it use its browser and take over at any time.

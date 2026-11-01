@@ -28,6 +28,8 @@
 
 <p align="center"><sub>OpenDuet 是独立项目，和 Anthropic 没有关系。</sub></p>
 
+https://github.com/user-attachments/assets/152ac85d-f14f-4991-a39b-05f97abeb0b4
+
 ## 它是什么
 
 后端和 OpenDuet 自己的电脑跑在你的服务器上，iPhone App 是遥控器。手机不在线时，任务照常在服务器上进行。和原版不同，它能接任何模型，你也能看着它操作浏览器、随时接管。
