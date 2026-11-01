@@ -143,6 +143,8 @@ export interface ToolProvider {
   status?(call: ToolUseBlock): StatusKey | undefined;
   /** endTurn = stop the loop after this round (e.g. waiting for the user's choice) */
   execute(call: ToolUseBlock, input: TurnInput): Promise<{ result: ToolResultBlock; endTurn: boolean }>;
+  /** the turn ended (completed, failed, stopped): let go of what it held (the computer's browser) */
+  turnEnded?(input: TurnInput): void;
   /**
    * M29 (agent/loading.ts): where one of this provider's tools sits in the "More tools" index when
    * it isn't sent in full (its group and one sentence); null / absent = by the provider's name.

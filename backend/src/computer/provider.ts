@@ -27,7 +27,7 @@ import { postFileCard, postFileDetached, replaceAssistantFile, storeAssistantFil
 import { foldName, maskElements } from "./masking.ts";
 import { baseName, domainOf, execTarget, modelPageUrl, safeFileName, shellQuote, workspacePath, WorkspacePathError } from "./paths.ts";
 import { editFileText, readFileText, searchFiles } from "./file-tools.ts";
-import type { ComputerService, PageElement, TurnRef } from "./service.ts";
+import { browserThread, CARD_BROWSER_WAIT_MS, type ComputerService, type PageElement, type TurnRef } from "./service.ts";
 import type { SignInService } from "./signin.ts";
 import { BROWSER_TOOLS, COMPUTER_APP, COMPUTER_TOOLKIT, POLICY_TOOLS, SCREENSHOT_NO_VISION, schemas, TOOL_INFO, toolDefinition, type PolicyTool, type ToolName } from "./tools.ts";
 import { DEFAULT_MAX_BYTES, WorkspaceError, type ComputerWorkspace } from "./workspace-impl.ts";
@@ -230,6 +230,17 @@ async function browserCallNow(client: ComputerClient, service: ComputerService, 
 const usesRef = (name: ToolName, args: Record<string, unknown>) => name === "computer_click" || name === "computer_type"
   || (name === "computer_key" && (typeof args.ref === "string" || (typeof args.key === "string" && activationOf(args.key) !== null)));
 
+/** Calls that show the model the page as it is, so they still run after another thread used the browser. */
+const SHOWS_PAGE = new Set<ToolName>(["computer_navigate", "computer_snapshot"]);
+
+/** The thread whose refs a turn may reuse (service.claimBrowser): a Make build never shares its own. */
+const browserScope = (turn: Turn): string => (turn.kind === "build" ? `build:${turn.runId}` : browserThread(turn));
+
+const busyReply = (call: ToolUseBlock): Reply => text(call, {
+  status: "browser_busy",
+  note: "OpenDuet's browser is being used by another task right now, so nothing ran. Don't call the browser tools again in this turn: carry on without the browser, or tell the user you'll do the browser part once it's free.",
+});
+
 /** How a call would press something (consequential.ts), or null for a call that can't. */
 function viaOf(name: ToolName, args: Record<string, unknown>): { via: Via; key: "enter" | "space" | null } | null {
   if (name === "computer_click") return { via: "click", key: null };
@@ -267,6 +278,7 @@ const CARD_REASONS: Record<string, { en: string; zh: string }> = {
   page_changed: { en: "The page changed and that button isn't there any more, so nothing was clicked. Ask OpenDuet to try again.", zh: "页面已经变了，找不到那个按钮，所以没有点击。可以让 OpenDuet 再试一次。" },
   other_page: { en: "OpenDuet's browser is on another site now, so nothing was clicked. Ask it to try again.", zh: "OpenDuet 的浏览器现在在另一个网站上，所以没有点击。可以让它再试一次。" },
   browser_check_needed: { en: "OpenDuet's computer restarted while you were using its browser. Open it, take over and hand it back, then try again.", zh: "你使用 OpenDuet 的浏览器时它重启了。请打开浏览器，接管后再交还，然后再试。" },
+  browser_busy: { en: "Another task was using OpenDuet's browser, so nothing was done. Ask OpenDuet to try again.", zh: "另一个任务正在使用 OpenDuet 的浏览器，所以什么都没做。可以让 OpenDuet 再试一次。" },
 };
 
 export function computerProvider(deps: ComputerProviderDeps): ComputerProvider {
@@ -276,17 +288,24 @@ export function computerProvider(deps: ComputerProviderDeps): ComputerProvider {
   const copied = new Map<string, Promise<string | null>>();
   /** runId + path -> the ChannelFile the assistant posted for it, so writes and sends update the same card */
   const shared = new Map<string, { fileId: string; messageId: string }>();
-  /** results of approved calls, told to the model on the user's next turn */
+  /**
+   * Results of approved calls, told to the model on the next turn of the card's thread (its task's
+   * session, else its channel's thread; approvedKey). Another thread's turn never takes them.
+   */
   const approved = new Map<string, { approvalId: string; tool: string; at: number; result: unknown }[]>();
+  const approvedKey = (userId: string, thread: string) => `${userId}\u0000${thread}`;
 
   const turnOf = (input: TurnInput): Turn => ({ userId: input.userId, channelId: input.channelId, taskId: input.taskId, kind: kindOf(input), runId: input.runId, input });
   const record = (turn: Turn, action: string, target: string, outcome: AuditOutcome) =>
     audit.record({ userId: turn.userId, action, actor: "assistant", target, outcome, runId: turn.runId });
+  /** This browser call would act on refs, focus or a page another thread left: it isn't run (a fresh snapshot instead). */
+  const staleFor = (name: ToolName) => service.refsStale && !SHOWS_PAGE.has(name);
 
   /** Fresh snapshot after a hand back: old refs are gone, so ref-based calls aren't replayed. */
   async function fresh(call: ToolUseBlock, client: ComputerClient, turn: Turn, why: string): Promise<Reply> {
     const snap = await service.using(() => client.snapshot(turn.input.signal));
     noteSnap(service, snap);
+    service.pageSeen();
     await service.acted(snap.url);
     return text(call, { status: "handed_back", note: `${why} Here is a fresh snapshot; the page may have changed and old refs don't work. Carry on from it (the call you made was not run).`, snapshot: snapshotView(snap) });
   }
@@ -349,6 +368,12 @@ export function computerProvider(deps: ComputerProviderDeps): ComputerProvider {
       await record(turn, name, target(), "denied");
       return gated;
     }
+    // Another thread used the browser since this one last saw it: its refs, focus and page are gone.
+    if (staleFor(name)) {
+      const reply = await fresh(call, client, turn, "Another task used OpenDuet's browser since you last looked.");
+      await record(turn, name, target(), "denied");
+      return reply;
+    }
     const waking = await service.wake();
     await turn.input.sink.status(waking ? "waking_workspace" : "working_browser");
     let outcome: BrowserOutcome;
@@ -390,6 +415,7 @@ export function computerProvider(deps: ComputerProviderDeps): ComputerProvider {
       await record(turn, name, target(), "error");
       return text(call, failureOf(error), true);
     }
+    if (SHOWS_PAGE.has(name)) service.pageSeen();
     await service.acted(outcome.url);
     await turn.input.sink.status("working_browser");
     await service.liveCard(turn, turn.input.sink, outcome.url);
@@ -752,7 +778,7 @@ export function computerProvider(deps: ComputerProviderDeps): ComputerProvider {
       }
       return { path: edited.path, bytes: edited.bytes.byteLength, replacements: edited.replacements, written: true };
     }
-    if (service.needsSnapshot && name !== "computer_snapshot") {
+    if ((service.needsSnapshot || service.refsStale) && name !== "computer_snapshot") {
       noteSnap(service, await service.using(() => client.snapshot()));
       if (usesRef(name, args)) return { notRun: true, note: "The page changed hands since; take a fresh snapshot and use its refs." };
     }
@@ -804,6 +830,13 @@ export function computerProvider(deps: ComputerProviderDeps): ComputerProvider {
     return message ? { channelId: message.channelId, taskId: message.taskId } : null;
   }
 
+  /** The thread an approved call's refs belong to: its task's, else its card's thread. */
+  async function approvalScope(call: { userId: string; approvalId: string; taskId: string | null }): Promise<string> {
+    if (call.taskId) return browserThread({ channelId: "", taskId: call.taskId });
+    const scope = await scopeOf(call);
+    return scope ? browserThread(scope) : `approval:${call.approvalId}`;
+  }
+
   async function cardReason(userId: string, key: keyof typeof CARD_REASONS): Promise<string> {
     const user = await deps.db.user.findUnique({ where: { id: userId }, select: { language: true } });
     return CARD_REASONS[key]![user?.language === "zh-Hans" ? "zh" : "en"];
@@ -822,13 +855,27 @@ export function computerProvider(deps: ComputerProviderDeps): ComputerProvider {
     if (service.needsRecovery) return { ok: false, error: await cardReason(call.userId, "browser_check_needed") };
     const target = press?.success ? press.data.site : targetOf(name, callArgs, service.state().url);
     try {
-      const result = press?.success
-        ? await approvedPress(client, name, parsed.data as Record<string, unknown>, press.data)
-        : await headless(client, call, name, parsed.data as Record<string, unknown>);
+      const thread = await approvalScope(call);
+      const run = () => (press?.success
+        ? approvedPress(client, name, parsed.data as Record<string, unknown>, press.data)
+        : headless(client, call, name, parsed.data as Record<string, unknown>));
+      // A page action waits for a run using the browser (one at a time); files and the shell don't.
+      let result: unknown;
+      if (BROWSER_TOOLS.has(name)) {
+        const ran = await service.withBrowser(`approval:${call.approvalId}`, thread, CARD_BROWSER_WAIT_MS, run);
+        if (!ran) return { ok: false, error: await cardReason(call.userId, "browser_busy") };
+        result = ran.done;
+      } else {
+        result = await run();
+      }
       await audit.record({ userId: call.userId, action: name, actor: "assistant", target, outcome: "ok" });
-      const list = (approved.get(call.userId) ?? []).filter((r) => r.approvalId !== call.approvalId);
+      // Kept for the card's own thread: its next turn (the carry-on after the decision) is told.
+      const key = approvedKey(call.userId, thread);
+      const list = (approved.get(key) ?? []).filter((r) => r.approvalId !== call.approvalId);
       list.push({ approvalId: call.approvalId, tool: TOOL_INFO[name].name, at: Date.now(), result });
-      approved.set(call.userId, list.slice(-APPROVED_KEEP));
+      approved.set(key, list.slice(-APPROVED_KEEP));
+      // A thread that never has another turn (a deleted task) mustn't keep its results forever.
+      for (const [other, rows] of approved) if (rows.every((r) => Date.now() - r.at >= APPROVED_TTL_MS)) approved.delete(other);
       // The run record shows it (redacted and capped there; files_write's result has no content).
       return { ok: true, output: result };
     } catch (error) {
@@ -842,10 +889,11 @@ export function computerProvider(deps: ComputerProviderDeps): ComputerProvider {
       return { ok: false, error: await cardReason(call.userId, kind) };
     }
   };
-  /** Approved calls since the user's last turn (data for the model), told once. */
-  function takeApproved(userId: string): { approvalId: string; tool: string; result: unknown }[] {
-    const list = (approved.get(userId) ?? []).filter((r) => Date.now() - r.at < APPROVED_TTL_MS);
-    approved.delete(userId);
+  /** Approved calls of this turn's thread since its last turn (data for the model), told once. */
+  function takeApproved(input: TurnInput): { approvalId: string; tool: string; result: unknown }[] {
+    const key = approvedKey(input.userId, browserScope(turnOf(input)));
+    const list = (approved.get(key) ?? []).filter((r) => Date.now() - r.at < APPROVED_TTL_MS);
+    approved.delete(key);
     return list.map(({ approvalId, tool, result }) => {
       const json = JSON.stringify(result ?? null) ?? "null";
       return { approvalId, tool, result: json.length <= 8000 ? result : `${json.slice(0, 8000)}…` };
@@ -869,7 +917,7 @@ export function computerProvider(deps: ComputerProviderDeps): ComputerProvider {
     lines.push(`OpenDuet's computer right now (data): ${JSON.stringify({ available: state.available, browser: state.browser, controller: state.controller, domain: state.domain, blocked: state.blocked })}`);
     if (state.controller === "user") lines.push("The user is driving OpenDuet's browser (Take over): don't use the browser tools until they hand it back.");
     else if (service.needsRecovery) lines.push("OpenDuet's computer restarted while the user was using its browser: the browser tools wait until the user opens it, takes over and hands it back.");
-    const results = takeApproved(input.userId);
+    const results = takeApproved(input);
     if (results.length) lines.push(`Computer calls the user approved since your last turn, with their results:\n${markUntrusted(JSON.stringify(results), "OpenDuet's computer")}`);
     return lines;
   }
@@ -900,6 +948,22 @@ export function computerProvider(deps: ComputerProviderDeps): ComputerProvider {
     return { reachable: state.available, userInControl, programs: found?.programs ?? null, memoryBytes: found?.memoryBytes ?? null, always, ask };
   }
 
+  /** A computer call past its argument check (a browser one while this run holds the browser): ToolPolicy, then the call. */
+  async function checked(call: ToolUseBlock, client: ComputerClient, turn: Turn, name: ToolName, args: Record<string, unknown>): Promise<Reply> {
+    // A stale browser call doesn't run at all (runBrowser answers with a fresh snapshot): no card for it.
+    const stale = BROWSER_TOOLS.has(name) && staleFor(name);
+    // The consequential-click check first: Always in ToolPolicy doesn't skip it.
+    const pressed = BROWSER_TOOLS.has(name) && !stale ? await browserGate(call, turn, name, args) : null;
+    if (pressed && pressed !== "allowed") return pressed;
+    if (!stale && pressed !== "allowed" && (POLICY_TOOLS as readonly string[]).includes(name)) {
+      const asked = await ask(call, turn, name as PolicyTool, args);
+      if (asked) return asked;
+    }
+    if (BROWSER_TOOLS.has(name)) return runBrowser(call, client, turn, name, args);
+    if (name === "request_sign_in") return requestSignIn(call, client, turn, args);
+    return runOther(call, client, turn, name, args);
+  }
+
   return {
     name: "computer",
     executeApproved,
@@ -923,17 +987,20 @@ export function computerProvider(deps: ComputerProviderDeps): ComputerProvider {
       const args = parsed.data as Record<string, unknown>;
       const turn = turnOf(input);
       service.noteOwner(turn.userId);
-      service.clearPause(turn.userId);
-      // The consequential-click check first: Always in ToolPolicy doesn't skip it.
-      const pressed = BROWSER_TOOLS.has(name) ? await browserGate(call, turn, name, args) : null;
-      if (pressed && pressed !== "allowed") return pressed;
-      if (pressed !== "allowed" && (POLICY_TOOLS as readonly string[]).includes(name)) {
-        const asked = await ask(call, turn, name as PolicyTool, args);
-        if (asked) return asked;
+      // A Make build is never paused; its calls leave the channel's chat paused.
+      if (turn.kind !== "build") service.clearPause(turn);
+      if (!BROWSER_TOOLS.has(name) && name !== "request_sign_in") return checked(call, client, turn, name, args);
+      // One run at a time on the browser: its refs and page stay its own until its turn ends.
+      const claimed = await service.claimBrowser(turn.runId, browserScope(turn), waitMs[turn.kind === "chat" ? "chat" : "background"], input.signal);
+      if (!claimed) return busyReply(call);
+      try {
+        return await checked(call, client, turn, name, args);
+      } finally {
+        service.doneWithBrowser(turn.runId);
       }
-      if (BROWSER_TOOLS.has(name)) return runBrowser(call, client, turn, name, args);
-      if (name === "request_sign_in") return requestSignIn(call, client, turn, args);
-      return runOther(call, client, turn, name, args);
+    },
+    turnEnded(input) {
+      service.releaseBrowser(input.runId);
     },
   };
 }

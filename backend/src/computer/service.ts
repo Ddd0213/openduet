@@ -41,6 +41,8 @@ export interface ComputerServiceDeps {
   handBackMs?: number;
   /** COMPUTER_START_URL: the start page for every region; unset = the user's engine's (engineFor) */
   startPageUrl?: string;
+  /** a run holding the browser with no call for this long gives it to the next one waiting (tests: short) */
+  leaseIdleMs?: number;
 }
 
 export interface TurnRef { userId: string; channelId: string; taskId: string | null; kind: RunKind; runId: string }
@@ -69,6 +71,22 @@ export const START_PAGE_URL = BING.startPage;
 
 /** Recent enough that the assistant is probably between two browser calls of the same turn. */
 const BUSY_GRACE_MS = 15_000;
+
+/**
+ * One run uses the browser at a time (claimBrowser). Its refs, focus and the page are the run's
+ * until its turn ends; a run that holds it this long without a browser call (thinking, other
+ * tools) gives it to the next one waiting.
+ */
+export const BROWSER_LEASE_IDLE_MS = 3 * 60_000;
+
+/** How long a tapped card (Approve, a sign-in card's Send) waits for a run using the browser; the tap's request is open meanwhile. */
+export const CARD_BROWSER_WAIT_MS = 20_000;
+
+/** The thread a run's refs carry over in: a task's own session, or a channel's thread. */
+export const browserThread = (ref: { channelId: string; taskId: string | null }): string => (ref.taskId ? `task:${ref.taskId}` : `channel:${ref.channelId}`);
+
+interface BrowserLease { owner: string; scope: string; calls: number; lastAt: number }
+interface LeaseWaiter { owner: string; scope: string; grant: (granted: boolean) => void }
 
 /** Recheck R4: the user's bar may open at most this many tabs (the assistant's own tabs count too). */
 export const MAX_OPEN_TABS = 20;
@@ -117,7 +135,8 @@ export class ComputerService {
   private readonly listeners = new Set<(state: ComputerState) => void>();
   private readonly live = new Map<string, LiveCard>();
   private readonly alerted = new Set<string>();
-  private readonly pauses = new Map<string, Pause>();
+  /** user id -> thread (browserThread) -> the turn that stopped there, oldest first: each is carried on at the hand back */
+  private readonly pauses = new Map<string, Map<string, Pause>>();
   private lastEmitted = "";
   private emitting: Promise<void> = Promise.resolve();
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -140,8 +159,24 @@ export class ComputerService {
   private readonly handBackMs: number;
   /** COMPUTER_START_URL, when set: wins over the region's start page */
   private readonly startPageOverride: string | null;
+  /** the run (or approved call / sign-in card) using the browser now, and the ones waiting, first come first */
+  private lease: BrowserLease | null = null;
+  private leaseWaiters: LeaseWaiter[] = [];
+  private leaseTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly leaseIdleMs: number;
+  /** the thread that used the browser last: a claim from another thread gets a fresh page */
+  private lastLeaseScope: string | null = null;
+  /** owners whose idle lease went to someone else: their refs are stale if they come back */
+  private readonly leaseTakenFrom = new Set<string>();
+  /**
+   * Another thread used the browser since the model last saw the page (a snapshot or a navigation
+   * shown to it). Unlike needsSnapshot, a silent snapshot doesn't clear it: the model still holds
+   * the old refs.
+   */
+  private handedOver = false;
 
   constructor(private readonly deps: ComputerServiceDeps) {
+    this.leaseIdleMs = deps.leaseIdleMs ?? BROWSER_LEASE_IDLE_MS;
     this.now = deps.now ?? Date.now;
     this.probeAfterMs = deps.probeAfterMs ?? 60_000;
     this.liveIdleMs = deps.liveIdleMs ?? 3 * 60_000;
@@ -653,7 +688,8 @@ export class ComputerService {
     if (this.now() - this.lastUserInputAt < this.handBackMs) return false;
     const userId = this.holder ?? this.owner ?? (this.ownerId || null);
     if (!userId) return false;
-    const pause = this.pauses.get(userId);
+    // The line goes to the thread that stopped last (the others are carried on all the same).
+    const pause = [...(this.pauses.get(userId)?.values() ?? [])].at(-1);
     const thread = pause ?? await this.deps.db.channel.findFirst({ where: { userId, isMain: true }, select: { id: true } }).then((c) => (c ? { channelId: c.id, taskId: null } : null));
     try {
       await this.handBack(userId, "system");
@@ -728,6 +764,118 @@ export class ComputerService {
     });
   }
 
+  // ------------------------------------------------------------------ one run at a time
+
+  /**
+   * Before a browser call: waits until `owner` (a run id, or an approved call / sign-in card) has the
+   * browser. There is one browser and one set of refs (the latest snapshot's), so two runs that
+   * interleave would click each other's refs and the consequential-click check would read the other
+   * run's page. The owner keeps it until releaseBrowser (its turn ended); while it holds it, others
+   * wait in order. One that has made no call for leaseIdleMs gives it to the next. Every claim must
+   * be followed by doneWithBrowser. false = timed out or aborted (nothing claimed).
+   */
+  claimBrowser(owner: string, scope: string, ms: number, signal?: AbortSignal): Promise<boolean> {
+    if (signal?.aborted) return Promise.resolve(false);
+    if (this.lease?.owner === owner) {
+      this.lease.calls++;
+      this.lease.lastAt = Date.now();
+      return Promise.resolve(true);
+    }
+    return new Promise<boolean>((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const giveUp = () => {
+        this.leaseWaiters = this.leaseWaiters.filter((w) => w !== waiter);
+        waiter.grant(false);
+      };
+      const waiter: LeaseWaiter = {
+        owner, scope,
+        grant: (granted) => {
+          clearTimeout(timer);
+          signal?.removeEventListener("abort", giveUp);
+          resolve(granted);
+        },
+      };
+      timer = setTimeout(giveUp, ms);
+      signal?.addEventListener("abort", giveUp, { once: true });
+      this.leaseWaiters.push(waiter);
+      this.pumpLease();
+    });
+  }
+
+  /** One claimed call is over (the owner may still hold the browser for its next one). */
+  doneWithBrowser(owner: string): void {
+    if (this.lease?.owner !== owner) return;
+    this.lease.calls = Math.max(0, this.lease.calls - 1);
+    this.lease.lastAt = Date.now();
+    this.pumpLease();
+  }
+
+  /** The owner's turn ended: the browser goes to the next one waiting; its own waits end. */
+  releaseBrowser(owner: string): void {
+    this.leaseTakenFrom.delete(owner);
+    const mine = this.leaseWaiters.filter((w) => w.owner === owner);
+    if (mine.length) this.leaseWaiters = this.leaseWaiters.filter((w) => w.owner !== owner);
+    for (const waiter of mine) waiter.grant(false);
+    if (this.lease?.owner !== owner) return;
+    this.lease = null;
+    this.pumpLease();
+  }
+
+  /** One call outside a turn (an approved card, a sign-in card): claimed, run, released. null = still busy after `ms`. */
+  async withBrowser<T>(owner: string, scope: string, ms: number, work: () => Promise<T>): Promise<{ done: T } | null> {
+    if (!(await this.claimBrowser(owner, scope, ms))) return null;
+    try {
+      return { done: await work() };
+    } finally {
+      this.releaseBrowser(owner);
+    }
+  }
+
+  /** Another thread used the browser since the model last saw the page: its refs, focus and page are gone. */
+  get refsStale(): boolean {
+    return this.handedOver;
+  }
+
+  /** The model was just shown the page as it is (a snapshot, a navigation). */
+  pageSeen(): void {
+    this.handedOver = false;
+  }
+
+  private takeLease(waiter: LeaseWaiter): void {
+    // Another thread's refs, or this owner coming back after its idle lease went to someone else.
+    const cameBack = this.leaseTakenFrom.delete(waiter.owner);
+    if ((this.lastLeaseScope !== null && this.lastLeaseScope !== waiter.scope) || cameBack) {
+      this.handedOver = true;
+      this.requireSnapshot();
+    }
+    this.lastLeaseScope = waiter.scope;
+    this.lease = { owner: waiter.owner, scope: waiter.scope, calls: 1, lastAt: Date.now() };
+    waiter.grant(true);
+  }
+
+  /** Hands a free browser to the first one waiting, or one held idle past leaseIdleMs. */
+  private pumpLease(): void {
+    if (this.leaseTimer) clearTimeout(this.leaseTimer);
+    this.leaseTimer = null;
+    const next = this.leaseWaiters[0];
+    if (!next) return;
+    const held = this.lease;
+    if (held) {
+      if (held.calls > 0) return; // doneWithBrowser pumps again
+      const idleFor = Date.now() - held.lastAt;
+      if (idleFor < this.leaseIdleMs) {
+        // Each waiter's own timeout keeps the process up while it waits; this one alone shouldn't.
+        this.leaseTimer = setTimeout(() => this.pumpLease(), this.leaseIdleMs - idleFor);
+        this.leaseTimer.unref?.();
+        return;
+      }
+      log.info("browser lease taken from an idle run", { idleMs: idleFor });
+      this.leaseTakenFrom.add(held.owner);
+    }
+    this.leaseWaiters.shift();
+    this.takeLease(next);
+  }
+
   // ------------------------------------------------------------------ pauses
 
   /**
@@ -738,7 +886,12 @@ export class ComputerService {
     // A Make build isn't carried on as a bare run: its artifact bookkeeping lives in the build's own
     // hooks (backend B), so a stopped build ends there and the user refreshes it.
     if (turn.kind === "build") return;
-    this.pauses.set(turn.userId, { channelId: turn.channelId, taskId: turn.taskId, kind: turn.kind, reason, ...(prompt ? { prompt } : {}) });
+    // One per thread: two tasks stopped by the same Take over are both carried on. Set again, it moves to the end.
+    const threads = this.pauses.get(turn.userId) ?? new Map<string, Pause>();
+    const thread = browserThread(turn);
+    threads.delete(thread);
+    threads.set(thread, { channelId: turn.channelId, taskId: turn.taskId, kind: turn.kind, reason, ...(prompt ? { prompt } : {}) });
+    this.pauses.set(turn.userId, threads);
   }
 
   /** May this user's taps and typing reach the browser? Only while they (or, after a restart, anyone) hold it. */
@@ -756,19 +909,25 @@ export class ComputerService {
     }
   }
 
-  /** A newer turn is using the computer: nothing left to carry on. */
-  clearPause(userId: string): void {
-    this.pauses.delete(userId);
+  /** A newer turn of this thread is using the computer: nothing left to carry on there. Other threads keep theirs. */
+  clearPause(turn: Pick<TurnRef, "userId" | "channelId" | "taskId">): void {
+    const threads = this.pauses.get(turn.userId);
+    if (!threads) return;
+    threads.delete(browserThread(turn));
+    if (threads.size === 0) this.pauses.delete(turn.userId);
   }
 
+  /** The hand back: every thread that stopped for it carries on, oldest first (each queues for the browser). */
   private async resume(userId: string): Promise<void> {
-    const pause = this.pauses.get(userId);
-    if (!pause || !this.deps.continueRun) return;
+    const threads = this.pauses.get(userId);
+    if (!threads || !this.deps.continueRun) return;
     this.pauses.delete(userId);
-    try {
-      await this.deps.continueRun({ userId, channelId: pause.channelId, taskId: pause.taskId, kind: pause.kind, prompt: pause.prompt ?? RESUME_PROMPT });
-    } catch (error) {
-      log.warn("computer resume failed", { error: { name: (error as Error)?.name ?? "Error" } });
+    for (const pause of threads.values()) {
+      try {
+        await this.deps.continueRun({ userId, channelId: pause.channelId, taskId: pause.taskId, kind: pause.kind, prompt: pause.prompt ?? RESUME_PROMPT });
+      } catch (error) {
+        log.warn("computer resume failed", { error: { name: (error as Error)?.name ?? "Error" } });
+      }
     }
   }
 
@@ -878,5 +1037,10 @@ export class ComputerService {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.wakeWaiters(false);
+    if (this.leaseTimer) clearTimeout(this.leaseTimer);
+    this.leaseTimer = null;
+    const waiting = this.leaseWaiters;
+    this.leaseWaiters = [];
+    for (const waiter of waiting) waiter.grant(false);
   }
 }

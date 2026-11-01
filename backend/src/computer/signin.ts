@@ -22,7 +22,7 @@ import type { AuditSink } from "./audit.ts";
 import { ComputerError, type SignInCodeResult, type SignInFillResult } from "./client.ts";
 import { rewriteMessage } from "./files.ts";
 import { domainOf } from "./paths.ts";
-import type { ComputerService, TurnRef } from "./service.ts";
+import { browserThread, CARD_BROWSER_WAIT_MS, type ComputerService, type TurnRef } from "./service.ts";
 
 /** How long a card (and, after the password, its code step) stays open. */
 export const SIGN_IN_TTL_MS = 10 * 60_000;
@@ -224,10 +224,17 @@ export class SignInService {
     entry.state = "sending";
     let change: Partial<Pending> & { state: CardState };
     try {
-      const result = await this.deps.service.using(() => client.signInFill({ origin: entry.origin, username: parsed.data.email, password: parsed.data.password }));
-      // The computer retired every ref once a form was submitted.
-      if (result.submitted) this.deps.service.requireSnapshot();
-      change = this.fillOutcome(entry, result);
+      // Typed into the page that's open: wait for a run using the browser (one at a time).
+      const ran = await this.deps.service.withBrowser(`signin:${entry.id}`, browserThread(entry), CARD_BROWSER_WAIT_MS,
+        () => this.deps.service.using(() => client.signInFill({ origin: entry.origin, username: parsed.data.email, password: parsed.data.password })));
+      if (!ran) {
+        log.warn("sign-in delivery waited too long for the browser");
+        change = { state: "failed", step: "credentials", reason: phrase("signin.failed") };
+      } else {
+        // The computer retired every ref once a form was submitted.
+        if (ran.done.submitted) this.deps.service.requireSnapshot();
+        change = this.fillOutcome(entry, ran.done);
+      }
     } catch (error) {
       log.warn("sign-in delivery failed", { kind: error instanceof ComputerError ? error.kind : "error" });
       change = { state: "failed", step: "credentials", reason: phrase("signin.failed") };
@@ -253,9 +260,15 @@ export class SignInService {
     entry.state = "sending";
     let change: Partial<Pending> & { state: CardState };
     try {
-      const result = await this.deps.service.using(() => client.signInCode({ origin: entry.origin, code: parsed.data.code }));
-      if (result.submitted) this.deps.service.requireSnapshot();
-      change = this.codeOutcome(entry, result);
+      const ran = await this.deps.service.withBrowser(`signin:${entry.id}`, browserThread(entry), CARD_BROWSER_WAIT_MS,
+        () => this.deps.service.using(() => client.signInCode({ origin: entry.origin, code: parsed.data.code })));
+      if (!ran) {
+        log.warn("sign-in code delivery waited too long for the browser");
+        change = { state: "failed", step: "code", reason: phrase("signin.failed") };
+      } else {
+        if (ran.done.submitted) this.deps.service.requireSnapshot();
+        change = this.codeOutcome(entry, ran.done);
+      }
     } catch (error) {
       log.warn("sign-in code delivery failed", { kind: error instanceof ComputerError ? error.kind : "error" });
       change = { state: "failed", step: "code", reason: phrase("signin.failed") };

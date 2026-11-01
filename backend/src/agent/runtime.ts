@@ -659,6 +659,13 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentRuntime {
               : { key: "system.model_unreachable", params: { reason: { type: "text", value: "internal" } } };
     } finally {
       clearFinishText(input.runId);
+      for (const provider of deps.providers ?? []) {
+        try {
+          provider.turnEnded?.(input);
+        } catch (error) {
+          log.warn("provider turn end failed", { provider: provider.name, error: { name: (error as Error)?.name ?? "Error" } });
+        }
+      }
       try {
         await bubbles?.finish();
       } finally {
