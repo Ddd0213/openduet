@@ -147,6 +147,25 @@ It then builds the images, starts every service, and checks the model once they 
 
 Last, it prints the address for the app and what to do next. If the model check fails, fix the model settings in `backend/.env` as it says, then run `docker compose up -d && docker compose exec backend bun run models:check`. Re-running setup.sh is safe: existing settings and data are kept.
 
+#### Proactive messages (on by default)
+
+New deployments enable automatic morning briefs and scheduled check-ins. The switch is `PROACTIVE_BUILTINS` in `backend/.env`:
+
+| Value | Effect |
+|---|---|
+| `1` (default) | Enables automatic morning briefs and scheduled check-ins. |
+| `0` | Disables both automatic jobs. |
+
+Check-ins stay silent unless something is worth telling you. The user's proactivity level and daily cap still apply; check-ins also respect quiet hours. This switch does **not** disable your reminders, scheduled tasks, the one-time onboarding scan, or task-completion and approval notifications.
+
+Existing deployments keep their current setting: updating the code or re-running setup.sh does not replace an existing `0` with `1`. To change it, edit `PROACTIVE_BUILTINS` in `backend/.env`, then run this from the repository directory to recreate only the backend and load the new value:
+
+```sh
+docker compose up -d --no-deps --force-recreate backend
+```
+
+`docker compose restart` alone does not re-read the environment file.
+
 ### 2. Connect your phone
 
 For the mode you picked in step 1, do what the last column says. setup.sh prints this at the end too:

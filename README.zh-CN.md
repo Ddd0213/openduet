@@ -147,6 +147,25 @@ setup.sh 先检查 Docker 和 openssl，缺什么会告诉你怎么装。然后�
 
 最后它打印 App 要填的地址和下一步要做的事。模型检查没通过时，按提示改 `backend/.env` 里的模型设置，再运行 `docker compose up -d && docker compose exec backend bun run models:check`。重复运行 setup.sh 是安全的，已有的配置和数据都会保留。
 
+#### 主动消息（默认开启）
+
+新部署默认开启自动晨报和定时主动检查。开关是 `backend/.env` 中的 `PROACTIVE_BUILTINS`：
+
+| 值 | 效果 |
+|---|---|
+| `1`（默认） | 开启自动晨报和定时主动检查。 |
+| `0` | 关闭这两类自动任务。 |
+
+主动检查没事时保持安静，不会每次都发消息。用户设置的主动程度和每日触达上限仍然生效，主动检查还受勿扰时间限制。这个开关**不会关闭**你创建的提醒、定时任务、一次性的初次引导扫描，以及任务完成或审批通知。
+
+已有部署会保留原设置：更新代码或重新运行 setup.sh 不会把已有的 `0` 自动改成 `1`。要修改，编辑 `backend/.env` 中的 `PROACTIVE_BUILTINS`，然后在仓库目录运行以下命令，只重新创建后端容器并加载新值：
+
+```sh
+docker compose up -d --no-deps --force-recreate backend
+```
+
+只运行 `docker compose restart` 不会重新读取环境文件。
+
 ### 2. 让手机连上
 
 按你在第 1 步选的方式，做下表最后一列的事。setup.sh 结尾也会提示：

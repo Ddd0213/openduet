@@ -181,8 +181,9 @@ export const RunRecord = z.object({
 
 /**
  * GET /api/schedule: the Scheduled group's Morning brief and Check-in rows.
- * M9: `builtins` false (the default, PROACTIVE_BUILTINS unset) = the server doesn't run the
- * built-in brief and check-ins; the app hides both rows and shows only routines (scheduled tasks).
+ * Built-in brief and check-ins are on unless PROACTIVE_BUILTINS=0 (or false). When `builtins`
+ * is false, the app hides both rows and shows only routines (scheduled tasks).
+ * The false fallback is only for older responses that omit the flag, not the server's default.
  */
 export const ScheduleInfo = z.object({
   builtins: z.boolean().default(false),

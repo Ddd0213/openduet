@@ -44,7 +44,7 @@ export interface ProactiveServiceDeps {
   now?: () => Date;
   /** the welcome's pacing (default ~1.0 s and ~1.6 s); tests pass [0, 0] */
   welcomeDelaysMs?: readonly [number, number];
-  /** M9: PROACTIVE_BUILTINS (ScheduleInfo.builtins); default off */
+  /** M14b: PROACTIVE_BUILTINS (ScheduleInfo.builtins); default on, gated per user */
   builtins?: boolean;
   /**
    * M23: the model triage uses (role utility, else the user's default). Absent: the rules decide
@@ -166,7 +166,7 @@ export class ProactiveService implements SlotRunner {
     const brief = specFor(user, "brief");
     const checkin = specFor(user, "checkin");
     return ScheduleInfo.parse({
-      builtins: this.deps.builtins ?? false,
+      builtins: this.deps.builtins ?? true,
       weekendsOn: user.weekendsOn,
       brief: { time: brief.times[0], nextRunAt: nextSlot(brief, from).toISOString(), history: await this.history(userId, "brief") },
       checkin: { times: checkin.times, nextRunAt: nextSlot(checkin, from).toISOString(), history: await this.history(userId, "checkin") },

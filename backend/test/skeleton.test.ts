@@ -36,6 +36,13 @@ describe("config", () => {
     expect(c.TRUSTED_PROXIES).toEqual([]);
   });
 
+  test("the deployment template enables the built-in brief and check-ins by default", () => {
+    const example = readFileSync(join(import.meta.dir, "../.env.example"), "utf8");
+    const value = /^PROACTIVE_BUILTINS=(.*)$/m.exec(example)?.[1];
+    expect(value).toBe("1");
+    expect(loadConfig(testEnv({ PROACTIVE_BUILTINS: value })).PROACTIVE_BUILTINS).toBe(true);
+  });
+
   test("M9: limits and PROACTIVE_BUILTINS are still settable", () => {
     const c = loadConfig(testEnv({ SESSION_TOKEN_LIMIT: "3000000", WEEKLY_TOKEN_LIMIT: "30000000", PROACTIVE_BUILTINS: "1" }));
     expect(c.SESSION_TOKEN_LIMIT).toBe(3_000_000);
@@ -43,6 +50,7 @@ describe("config", () => {
     expect(c.PROACTIVE_BUILTINS).toBe(true);
     expect(loadConfig(testEnv({ PROACTIVE_BUILTINS: "true" })).PROACTIVE_BUILTINS).toBe(true);
     expect(loadConfig(testEnv({ PROACTIVE_BUILTINS: "0" })).PROACTIVE_BUILTINS).toBe(false);
+    expect(loadConfig(testEnv({ PROACTIVE_BUILTINS: "false" })).PROACTIVE_BUILTINS).toBe(false);
     expect(() => loadConfig(testEnv({ PROACTIVE_BUILTINS: "yes" }))).toThrow(/PROACTIVE_BUILTINS/);
   });
 

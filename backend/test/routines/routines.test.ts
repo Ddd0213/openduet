@@ -305,6 +305,26 @@ describe("routine routes", () => {
 });
 
 describe("PROACTIVE_BUILTINS", () => {
+  test("default: built-ins are enabled and a due morning brief runs without an explicit switch", async () => {
+    const on = await startProactive();
+    try {
+      expect(ScheduleInfo.parse(await (await on.fixture.app.request("/api/schedule", { headers: on.alex.headers })).json()).builtins).toBe(true);
+      await on.fixture.db.user.update({ where: { id: on.alex.userId }, data: {
+        onboardedAt: START, timezone: "UTC", briefTime: "09:10", checkinMinute: 5,
+      } });
+      on.llm.script("proactive", [text("Here's your morning brief.")]);
+      on.clock.now = at("2030-10-23T09:12:00.000Z");
+      const report = await on.proactive.scheduler.tick(on.clock.now);
+      await on.fixture.runs.idle();
+      expect(report.started).toBe(1);
+      expect(await on.fixture.db.run.count({ where: { userId: on.alex.userId, kind: "brief", status: "completed" } })).toBe(1);
+      expect(on.pushes).toHaveLength(1);
+      expect(on.pushes[0]!.body).toEqual({ text: "Here's your morning brief." });
+    } finally {
+      await on.cleanup();
+    }
+  });
+
   test("off: no brief or check-in slots, builtins false, no weekend switch in chat; routines still run", async () => {
     await db().user.update({ where: { id: app.alex.userId }, data: { onboardedAt: at("2030-10-01T00:00:00.000Z"), briefTime: "09:10", checkinMinute: 5 } });
     const info = ScheduleInfo.parse(await (await req("/api/schedule")).json());

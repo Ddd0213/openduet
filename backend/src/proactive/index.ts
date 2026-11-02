@@ -41,7 +41,7 @@ export interface ProactiveDeps {
   tickMs?: number;
   welcomeDelaysMs?: readonly [number, number];
   /**
-   * M9: the built-in morning brief and check-ins (config PROACTIVE_BUILTINS, default off): the
+   * M14b: the built-in morning brief and check-ins (PROACTIVE_BUILTINS, default on): the
    * scheduler runs them, GET /api/schedule says builtins: true and chat offers set_weekends. The
    * first-day scan and routines run either way.
    */
@@ -72,7 +72,7 @@ export function registerProactiveRoutes(deps: { service: ProactiveService; catal
 }
 
 export function createProactive(deps: ProactiveDeps): Proactive {
-  const builtins = deps.builtins ?? false;
+  const builtins = deps.builtins ?? true;
   const service = new ProactiveService({ ...deps, builtins });
   const routines = new RoutineService({ db: deps.db, runs: deps.runs, usage: deps.usage, tasks: deps.tasks, now: service.now });
   const scheduler = new Scheduler({ db: deps.db, runner: service, now: service.now, tickMs: deps.tickMs, builtins, routines });

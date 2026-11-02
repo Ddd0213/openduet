@@ -37,7 +37,7 @@ export interface ProactiveApp {
 /** Wednesday 2030-10-23 09:00 UTC unless a test moves it. */
 export const DEFAULT_NOW = new Date("2030-10-23T09:00:00.000Z");
 
-/** `builtins` (PROACTIVE_BUILTINS) defaults to true here: most proactive tests exercise the brief / check-ins. */
+/** `builtins` inherits the production module's default (on); tests can explicitly turn it off. */
 /** `taskClock`: the task module reads the same fake clock (routines: PATCH schedule / resume). */
 /** `memory` (M18c): the memory provider too (remember / followed_up), on the same fake clock. */
 /** `triage` (M23, default true): mail triage gets the scripted model's "utility" role through a resolver. */
@@ -58,7 +58,7 @@ export async function startProactive(opts: { composio?: boolean; env?: Record<st
       const proactive = createProactive({
         db: core.db, runs, usage: core.usage, tasks: tasks.service, catalog: connectors.catalog,
         notify: async (input) => { pushes.push(structuredClone(input)); return "sent"; },
-        now: () => clock.now, welcomeDelaysMs: [0, 0], builtins: opts.builtins ?? true,
+        now: () => clock.now, welcomeDelaysMs: [0, 0], builtins: opts.builtins,
         events: core.events, resolver: opts.triage === false ? null : scriptedResolver(llm),
       });
       providers.push(...connectors.providers, ...tasks.providers, ...proactive.providers);
