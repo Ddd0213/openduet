@@ -3,10 +3,11 @@
 //   lists the failed attempt's tool calls (a short argument and how each ended) and what it already
 //   wrote to the user, so the new attempt checks before it redoes a step (codync-harness #5; wording
 //   after Codync's agent/fallback/carry.rs `takeover()`). Model-facing English, never shown.
-// - toolDigests: one `[tools: …]` line per earlier assistant turn in the history window (A4), from the
-//   tool steps of the run that wrote it.
+// - toolDigests: one summary per earlier assistant turn (A4), from that run's tool steps. Context
+//   supplies these as separate server records, not as text the assistant previously wrote.
 // Both read what the recorder stored, which is already redacted and capped (redact.ts).
 import type { RunKind } from "../agent/types.ts";
+import { MESSAGE_KINDS } from "../contract/messages.ts";
 import type { Db } from "../db.ts";
 
 export type TakeoverReason = "failed" | "restart";
@@ -155,26 +156,96 @@ export function digestLine(steps: StepRow[]): string | null {
   return `[tools: ${cut(lines.join("; "), DIGEST_MAX_CHARS - 9)}]`;
 }
 
-/** A whole line in the digest's own format; a model reading its history sometimes writes one too. */
-const DIGEST_LINE = /^[ \t]*\[tools:.*\][ \t]*$/;
-const DIGEST_START = "[tools:";
+/** Only history-note heads count; ordinary brackets and Markdown stay user text. */
+const NOTE_WORDS = ["attachment", ...MESSAGE_KINDS];
+const NOTE_OPENERS = ["[tools:", "[Attached:", "[stopped by the user:", ...NOTE_WORDS.map((kind) => `[${kind}`)];
+const NOTE_HEAD = new RegExp(`^\\[(?:tools:|Attached:|stopped by the user:|(?:${NOTE_WORDS.join("|")})(?=[ \\t\\]]))`);
+/**
+ * An unclosed head that can only be a cut-off server note, so the final flush drops it: the
+ * server's own prefixes, or a card kind followed by its quoted title / options. Prose like
+ * "[file 名称 那一栏" or "[text in brackets" never closes and stays as written.
+ */
+const CUT_NOTE = new RegExp(`^\\[(?:tools:|Attached:|stopped by the user:|attachment|(?:${MESSAGE_KINDS.join("|")}) (?:"|options:))`);
+/** A weak (card-kind) head is held back while streaming at most this long; server labels are shorter. */
+const HELD_TAIL_MAX = 300;
+
+/** Find the outer closing bracket, including JSON-quoted names containing brackets. */
+function noteEnd(line: string, start: number): number | null {
+  let depth = 0, quoted = false;
+  for (let i = start; i < line.length; i++) {
+    const char = line[i];
+    if (char === "\\") { i++; continue; }
+    if (char === '"') quoted = !quoted;
+    if (quoted) continue;
+    if (char === "[") depth++;
+    if (char === "]" && --depth === 0) return i + 1;
+  }
+  return null;
+}
 
 /**
- * A text without the lines that copy the digest format (the user never sees the server's digest,
- * so the assistant's own copy of it is dropped too). A mention inside a sentence stays. With `streaming`,
- * a last line that could still become one is held back until it is complete.
+ * Remove copied history notes at line ends, including a chain of notes while its last one is
+ * still streaming. Code, escaped brackets, links and mentions followed by prose stay intact.
+ * This also cleans stored assistant prose before it becomes another example for the model.
  */
 export function stripDigests(text: string, streaming = false): string {
   if (!text.includes("[")) return text;
   const lines = text.split("\n");
-  let dropped = false;
-  const kept = lines.filter((line, i) => {
-    const last = i === lines.length - 1;
-    const lead = line.trimStart();
-    const partial = streaming && last && (DIGEST_START.startsWith(lead) || lead.startsWith(DIGEST_START)) && lead !== "";
-    if (!DIGEST_LINE.test(line) && !partial) return true;
+  let dropped = false, fence: string | null = null, ticks = 0;
+  const kept = lines.flatMap((line, index) => {
+    const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (fence) {
+      if (marker && marker[1]![0] === fence[0] && marker[1]!.length >= fence.length && !marker[2]!.trim()) fence = null;
+      return [line];
+    }
+    if (marker && !ticks) { fence = marker[1]!; return [line]; }
+    if (/^(?: {4}|\t)/.test(line)) return [line];
+
+    const notes: { start: number; end: number }[] = [];
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === "\\" && !ticks) { i++; continue; }
+      if (char === "`") {
+        const start = i;
+        while (line[i + 1] === "`") i++;
+        const size = i - start + 1;
+        if (!ticks) ticks = size;
+        else if (ticks === size) ticks = 0;
+        continue;
+      }
+      if (ticks || char !== "[") continue;
+      // The second bracket of a reference link is not a card label.
+      if (line[i - 1] === "]" && notes.at(-1)?.end !== i) continue;
+      const tail = line.slice(i);
+      const head = NOTE_HEAD.test(tail);
+      const partial = streaming && index === lines.length - 1;
+      if (!head && !(partial && NOTE_OPENERS.some((opener) => opener.startsWith(tail)))) continue;
+      const end = noteEnd(line, i);
+      if (end === null) {
+        // Unclosed: only the reply's last line can still be a note in the making. While streaming
+        // it waits (a card-kind head only so long); on the final flush only a head that can't be
+        // prose is dropped, so a stopped or cut-off reply never reveals one.
+        const last = index === lines.length - 1;
+        const cutNote = CUT_NOTE.test(tail);
+        const held = partial && (cutNote || tail.length <= HELD_TAIL_MAX);
+        if (last && (held || cutNote)) notes.push({ start: i, end: line.length });
+        break;
+      }
+      // Inline tool digests have an outcome arrow; keep ordinary references to "[tools: …]".
+      const digest = tail.startsWith("[tools:");
+      if (!digest || line.slice(i, end).includes("→") || !line.slice(0, i).trim()) notes.push({ start: i, end });
+      i = end - 1;
+    }
+    let cut = line.length;
+    for (let i = notes.length - 1; i >= 0; i--) {
+      const note = notes[i]!;
+      if (line.slice(note.end, cut).trim()) break;
+      cut = note.start;
+    }
+    if (cut === line.length) return [line];
     dropped = true;
-    return false;
+    const rest = line.slice(0, cut).trimEnd();
+    return rest ? [rest] : [];
   });
   return dropped ? kept.join("\n").trimEnd() : text;
 }

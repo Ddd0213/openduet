@@ -15,7 +15,15 @@ export interface RunTap {
    * Starts streaming the buffered and live events; closes after `done` of `runId`, or right after
    * the buffered echo when there is no run left to wait for (null).
    */
-  respond(runId: string | null, opts: { heartbeatMs?: number; signal?: AbortSignal; session?: { sessionId: string; connections: SessionConnections } }): Response;
+  respond(runId: string | null, opts: {
+    heartbeatMs?: number; signal?: AbortSignal; session?: { sessionId: string; connections: SessionConnections };
+    /**
+     * The run that answers this stream's message now (RunHost.runOf). A steering correction the
+     * model never read runs as its own turn after Stop: at the stopped run's `done` the stream
+     * moves on to that turn instead of closing.
+     */
+    follow?: () => string | null;
+  }): Response;
   /** Drops the subscription when the send was rejected. */
   stop(): void;
 }
@@ -48,10 +56,14 @@ function tap(events: EventBus, userId: string, wanted: (event: DuetEvent) => boo
   let sink: SseSink | null = null;
   let runId: string | null = null;
 
+  let follow: (() => string | null) | undefined;
   const deliver = (event: DuetEvent) => {
     if (!sink) return void buffer.push(event);
     sink.send(event);
-    if (event.type === "done" && event.payload.runId === runId) sink.close();
+    if (event.type !== "done" || event.payload.runId !== runId) return;
+    const next = follow?.();
+    if (next && next !== runId) runId = next;
+    else sink.close();
   };
   const unsubscribe = events.subscribe(userId, (event) => {
     if (wanted(event)) deliver(event);
@@ -60,6 +72,7 @@ function tap(events: EventBus, userId: string, wanted: (event: DuetEvent) => boo
   return {
     respond(id, opts) {
       runId = id;
+      follow = opts.follow;
       return sseResponse((s) => {
         sink = s;
         const unregister = opts.session?.connections.register(opts.session.sessionId, s.close);

@@ -39,7 +39,7 @@ describe("seen receipt", () => {
     expect(await statusOf("seen-2")).toBe("sent");
   });
 
-  test("a message queued behind a running turn turns seen only when its own turn answers", async () => {
+  test("a steering message turns seen when the next model request consumes it, before the run ends", async () => {
     const gate = deferred();
     // First turn: a card (the model is answering: message one is seen), then a round held open.
     t.llm.script("chat",
@@ -59,14 +59,15 @@ describe("seen receipt", () => {
     await t.fixture.runs.idle();
     expect(await statusOf("seen-q2")).toBe("seen");
 
-    // Its seen update comes after the first run's done, and after its own echo.
+    // Its seen update comes before the same run's done, and after its own echo.
     const secondId = (await t.fixture.db.message.findFirstOrThrow({ where: { clientId: "seen-q2" } })).id;
     const events = await storedEvents(t.fixture, t.alex.userId, from);
     const firstRun = (await t.fixture.db.message.findFirstOrThrow({ where: { clientId: "seen-q1" } })).id;
     const firstDone = events.findIndex((e) => e.type === "done" && e.payload.status === "completed");
     const seen = events.findIndex((e) => e.type === "message" && e.payload.message.id === secondId && e.payload.message.status === "seen");
     expect(firstDone).toBeGreaterThan(-1);
-    expect(seen).toBeGreaterThan(firstDone);
+    expect(seen).toBeGreaterThan(-1);
+    expect(seen).toBeLessThan(firstDone);
     expect(events.filter((e) => e.type === "message" && e.payload.message.id === firstRun && e.payload.message.status === "seen")).toHaveLength(1);
   });
 });

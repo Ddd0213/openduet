@@ -12,6 +12,7 @@ import type { ToolProvider, TurnInput } from "../agent/types.ts";
 import type { StatusKey } from "../contract/common.ts";
 import type { Db } from "../db.ts";
 import type { ToolResultBlock, ToolUseBlock } from "../llm/index.ts";
+import { stripDigests } from "../runs/takeover.ts";
 import { localParts, safeZone } from "../scheduler/slots.ts";
 import { createOrLinkSuggestion } from "../suggestions/create.ts";
 import { SourceInput } from "../suggestions/source.ts";
@@ -213,7 +214,9 @@ export function createProactiveProvider(ctx: ProactiveContext): ProactiveProvide
         if (readFailed(state?.reads)) return reply({ error: "Don't skip the brief: a source couldn't be read (see the instructions). Post a short brief with what you have; the server adds the line saying what couldn't be checked." }, true);
         return reply({ skipped: true }, false, true);
       case "post_message": {
-        const { text } = schemas.post_message.parse(call.input);
+        // Proactive tools use state.raw to bypass the silent-turn sink, so clean at the source.
+        const text = stripDigests(schemas.post_message.parse(call.input).text);
+        if (!text.trim()) return reply({ error: "Write a message for the user, not only internal history notes." }, true);
         await sink.upsertMessage({ role: "assistant", kind: "text", text });
         if (state) state.visible = true;
         return reply({ posted: true });
@@ -223,7 +226,9 @@ export function createProactiveProvider(ctx: ProactiveContext): ProactiveProvide
         if (state.finding) return reply({ error: "One finding per check-in: this one already called share_finding." }, true);
         const refusal = await findingRefusal(db, input.userId, input.runId, ctx.now());
         if (refusal) return reply({ error: refusal }, true);
-        const { text, sources } = schemas.share_finding.parse(call.input);
+        const args = schemas.share_finding.parse(call.input);
+        const text = stripDigests(args.text), sources = args.sources;
+        if (!text.trim()) return reply({ error: "Write a finding for the user, not only internal history notes." }, true);
         const lang = (await user(input.userId)).language;
         state.finding = true;
         await sink.upsertMessage({ role: "assistant", kind: "text", text: findingText(text, sources, phrase("agent.finding_sources", lang)) });

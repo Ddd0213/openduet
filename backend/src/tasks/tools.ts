@@ -10,6 +10,7 @@ import { HIDDEN_SUGGESTION_DAYS } from "../contract/m23.ts";
 import { TaskResource } from "../contract/tasks.ts";
 import type { Db } from "../db.ts";
 import { HttpError } from "../http.ts";
+import { stripDigests } from "../runs/takeover.ts";
 import type { ToolResultBlock, ToolUseBlock } from "../llm/index.ts";
 import { createOrLinkSuggestion, linkCard, type SuggestionOrigin, type SuggestionOutcome } from "../suggestions/create.ts";
 import { readInRun, SourceInput, toStored } from "../suggestions/source.ts";
@@ -297,9 +298,10 @@ export function createTaskTools(service: TaskService, db: Db): ToolProvider {
       }
       case "ask_user": {
         const args = schemas.ask_user.parse(call.input);
-        const asked = args.question ? await input.sink.upsertMessage({ role: "assistant", kind: "text", text: args.question }) : null;
+        const question = args.question ? stripDigests(args.question) : undefined;
+        const asked = question ? await input.sink.upsertMessage({ role: "assistant", kind: "text", text: question }) : null;
         // M22: the question's bubble is the task's nextStep target (Answer: ...).
-        service.signal(input.runId, "ask", args.question, asked?.id);
+        service.signal(input.runId, "ask", question, asked?.id);
         return reply({ waitingForUser: true }, false, true);
       }
       case "finish_task": {
@@ -312,8 +314,9 @@ export function createTaskTools(service: TaskService, db: Db): ToolProvider {
         const task = await service.own(input.userId, taskId);
         const open = task ? stepsOf(task).filter((s) => s.state !== "done") : [];
         if (open.length) return reply({ error: `${open.length} step(s) of the checklist are still planned or current (${open.map((s) => JSON.stringify(s.text)).join(", ")}). Do them, or call set_steps to mark them done or remove them, then finish.`, openSteps: open.map((s) => s.text) }, true);
-        if (args.summary) await service.mutate(taskId, (current) => ({ updates: appendUpdate(current, service.entry({ text: args.summary! }, "OpenDuet")) }));
-        service.signal(input.runId, "finish", args.summary, undefined, call.id);
+        const summary = args.summary ? stripDigests(args.summary) : undefined;
+        if (summary) await service.mutate(taskId, (current) => ({ updates: appendUpdate(current, service.entry({ text: summary }, "OpenDuet")) }));
+        service.signal(input.runId, "finish", summary, undefined, call.id);
         return reply({ finished: true, note: "The server marks the task done and posts a later final message, else the summary, else your last message in the chat as its result." }, false, true);
       }
       default:

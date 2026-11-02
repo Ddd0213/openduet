@@ -122,4 +122,74 @@ describe("M28: a copy of the history's [tools: …] digest never reaches the use
     const value = "那行 [tools: …] 是服务器加的。\n[注] 这是备注\n[链接](https://example.com)\n[tools: 见下] 说明";
     expect((await streamed(value, 1)).final).toEqual([value]);
   });
+
+  test("the screenshot suffixes and consecutive notes never flash, at any chunk size", async () => {
+    const cases = [
+      ["点 Apply 后才会生效，在这之前不会改动。", "[tools: propose_soul_setup → ok]"],
+      ["要我先在电脑上跑一下方案 1 吗？", "[attachment]"],
+      ["问题？", '[attachment] [tools: quick_replies → ok] [quick_replies options: "好", "不用"]'],
+      ["已完成。", '[file "report [final].pdf" (application/pdf)] [artifact "Plan" ready id="art_1"]'],
+      ["收到。", '[Attached: "a[b].txt" (text/plain)]'],
+      ["写到这里。", "[stopped by the user: this reply was cut off here]"],
+      ["选一个。", '[form "Plan [A]" (answered)]'],
+    ];
+    for (const [body, notes] of cases) {
+      for (const step of [1, 2, 7, 37, 1000]) {
+        const { sent, final } = await streamed(body! + notes!, step);
+        expect(final).toEqual([body!]);
+        for (const text of sent) expect(text).not.toContain("[");
+      }
+    }
+  });
+
+  test("code examples, escaped brackets and Markdown links remain intact while streaming", async () => {
+    const examples = [
+      '```text\n[attachment]\n[tools: quick_replies → ok]\n```',
+      '~~~text\n[file "a.pdf"]\n~~~',
+      '    [attachment]\n\t[tools: quick_replies → ok]',
+      'Use `[attachment]` or ``[file "a.pdf"]``.',
+      String.raw`Escaped: \[attachment]`,
+      '[file](https://example.com) and [reference][artifact]',
+      '- [x] Done\n- [ ] Later\n脚注[1]\n[filet]\n[cardboard]',
+    ];
+    for (const value of examples) {
+      const { sent, final } = await streamed(value, 1);
+      expect(final).toEqual([value]);
+      // Delaying a possible note is fine; altering the content of a code example is not.
+      for (const text of sent) expect(value.startsWith(text)).toBe(true);
+    }
+  });
+
+  test("a suffix after code and notes across bubble boundaries are still removed", async () => {
+    const value = '```text\n[attachment]\n```\n说明 `[file]`。';
+    expect((await streamed(`${value}[attachment]`, 1)).final).toEqual([value]);
+    const { sent, final } = await streamed(`${para}[attachment]\n\n第二段。[tools: quick_replies → ok]`, 1);
+    expect(final.join("\n")).toContain("第二段。");
+    for (const text of sent) expect(text).not.toContain("[");
+  });
+
+  test("prose with an unclosed bracket and a card word arrives whole once complete", async () => {
+    for (const value of ["配置项写在 [file 名称 那一栏，然后保存。", "先看 [card 标题 这一段\n第二行正常", "例子：[text 这里随便写"]) {
+      for (const step of [1, 5, 1000]) {
+        const { sent, final } = await streamed(value, step);
+        expect(final).toEqual([value]);
+        // Held back for a while is fine; changed or cut is not.
+        for (const text of sent) expect(value.startsWith(text)).toBe(true);
+      }
+    }
+  });
+
+  test("truncated notes stay hidden on the final flush, for arbitrary tool names and outcomes", async () => {
+    for (const note of [
+      "[tools: computer_exec → ok; web_search → failed; mcp_example → waiting for approval]",
+      "[tools: future_tool_not_in_any_registry → ok]",
+      "[tools: computer_exec →",
+      '[attachment][tools: quick_replies → ok',
+      '[file "report.pdf',
+    ]) {
+      const { sent, final } = await streamed(`完成。${note}`, 1);
+      expect(final).toEqual(["完成。"]);
+      for (const text of sent) expect(text).not.toContain("[");
+    }
+  });
 });

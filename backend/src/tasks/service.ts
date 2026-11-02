@@ -380,13 +380,16 @@ export class TaskService implements TaskResumer, ChatResumer {
    * ChatResumer (M21 #12): the approval cards a chat turn posted (no task) were all decided. Like a
    * task's session, the chat carries on: one chat turn in the card's channel whose request says
    * what became of each card. A chat turn already waiting in that thread reads the decided cards
-   * itself (the approvals instructions), so none is added then; a deleted channel gets none.
+   * itself (the approvals instructions), so none is added then; a user message waiting to join the
+   * running turn (steering) gets the note with it instead; a deleted channel gets none.
    */
   async resumeChatAfterApproval(input: { userId: string; channelId: string; outcomes: ApprovalOutcome[] }): Promise<void> {
     if (!input.outcomes.length || this.deps.runs.pendingChat(input.userId, input.channelId) > 0) return;
+    const note = chatResumeNote(input.outcomes);
+    if (this.deps.runs.steerNote(input.userId, input.channelId, note)) return;
     const channel = await this.deps.db.channel.findFirst({ where: { id: input.channelId, userId: input.userId }, select: { id: true } });
     if (!channel) return;
-    await this.deps.runs.submit({ userId: input.userId, channelId: input.channelId, taskId: null, kind: "chat", prompt: chatResumeNote(input.outcomes) });
+    await this.deps.runs.submit({ userId: input.userId, channelId: input.channelId, taskId: null, kind: "chat", prompt: note });
   }
 
   /**
@@ -553,6 +556,11 @@ export class TaskService implements TaskResumer, ChatResumer {
 
   private hooks(taskId: string, origin: Origin | (() => Promise<Origin>)) {
     return {
+      steered: (runId: string) => {
+        this.signals.delete(runId);
+        const start = this.starts.get(runId);
+        if (start) start.origin = "reply";
+      },
       before: async (runId: string) => {
         // Marked before any await, so a build settling while this turn runs waits for its end.
         this.turns.set(taskId, runId);

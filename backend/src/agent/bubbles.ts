@@ -53,7 +53,7 @@ export class TextBubbles {
   async finish(): Promise<void> { await this.flush(true); }
 
   private async flush(final: boolean): Promise<void> {
-    // M28: a line copying the history's `[tools: …]` digest is the server's note, never the user's.
+    // Copied history notes are server metadata; withhold their partial prefixes while streaming.
     const text = stripDigests(this.text, !final);
     if (!text || text === this.sent) return;
     // A potential pass waits until prose makes it unambiguous; suppressed text never reaches SSE.

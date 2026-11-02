@@ -20,6 +20,22 @@ const notices = (taskId: string) => t.fixture.db.message.findMany({
 });
 
 describe("the done notice", () => {
+  test("tool summaries and questions do not leak history notes into results, updates or notices", async () => {
+    t.llm.script("task", [call("finish_task", { summary: "预算表已经做好。[attachment][tools: computer_exec → ok]" })]);
+    const task = await t.tasks.service.create({ userId: t.alex.userId, channelId: t.alex.mainChannelId, title: "Clean summary", prompt: "Plan it" });
+    await t.fixture.runs.idle();
+    expect((await notices(task.id)).map((m) => m.text)).toEqual(["预算表已经做好。"]);
+    const row = await t.fixture.db.task.findUniqueOrThrow({ where: { id: task.id } });
+    expect(JSON.parse(row.updates).at(-1).text).toEqual({ text: "预算表已经做好。" });
+
+    t.llm.script("task", [call("ask_user", { question: "预算是多少？[attachment][tools: ask_user → ok]" })]);
+    const asked = await t.tasks.service.create({ userId: t.alex.userId, channelId: t.alex.mainChannelId, title: "Clean question", prompt: "Ask me" });
+    await t.fixture.runs.idle();
+    const messages = await t.fixture.db.message.findMany({ where: { userId: t.alex.userId, role: "assistant", kind: "text" } });
+    expect(messages.filter((m) => m.taskId === asked.id).map((m) => m.text)).toContain("预算是多少？");
+    for (const m of messages) { expect(m.text).not.toContain("[attachment]"); expect(m.text).not.toContain("[tools:"); }
+  });
+
   test("in zh-Hans: finish_task's summary is the result when the turn wrote no text; without one, the task_done line with the title's link brackets escaped", async () => {
     await t.fixture.db.user.update({ where: { id: t.alex.userId }, data: { language: "zh-Hans" } });
     try {

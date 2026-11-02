@@ -14,8 +14,8 @@ export const sendMessage: Handler<AppEnv> = async (c) => {
   const userId = c.get("user").id;
   const tap = tapChannel(events, userId, channel.id);
   try {
-    const { runId } = await runs.send({ userId, channelId: channel.id, ...input });
-    return tap.respond(runId, { heartbeatMs, signal: c.req.raw.signal, session: { sessionId: c.get("session").id, connections } });
+    const { runId, message } = await runs.send({ userId, channelId: channel.id, ...input });
+    return tap.respond(runId, { heartbeatMs, signal: c.req.raw.signal, session: { sessionId: c.get("session").id, connections }, follow: () => runs.runOf(message.id) });
   } catch (error) {
     tap.stop();
     throw error;

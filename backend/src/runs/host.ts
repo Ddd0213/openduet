@@ -4,7 +4,8 @@
 // calls the sink. Any RunKind can run here: chat turns come from send(), background turns
 // (tasks now, brief/checkin/scan in M4) from submit() with hooks around the turn.
 import type { ChannelFile as FileRow, Run as RunRow } from "@prisma/client";
-import type { AgentRuntime, MessageDraft, RunKind, TurnInput, TurnResult, TurnSink } from "../agent/types.ts";
+import type { AgentRuntime, MessageDraft, RunKind, SteeringItem, SteeringNote, TurnInput, TurnResult, TurnSink } from "../agent/types.ts";
+import { SteeringInbox } from "../agent/steering.ts";
 import type { Phrase, StatusKey } from "../contract/common.ts";
 import type { Message } from "../contract/messages.ts";
 import type { Db } from "../db.ts";
@@ -15,13 +16,14 @@ import { log } from "../log.ts";
 import type { UsageMeter } from "../usage/meter.ts";
 import type { RunNotices, RunRef } from "../notify/run-end.ts";
 import { checkAnswers, parseForm, type Answer, type FormNote } from "../cards/forms.ts";
+import { slashSkill } from "../skills/service.ts";
 import { resolveAttachments } from "./attachments.ts";
 import { quoteExcerpt } from "./quote.ts";
 import { chatTitle, runTitle } from "./records.ts";
 import { loadMessage, payloadSchemaFor } from "./serialize.ts";
 import { RunRecorder, type StepRecorder } from "./steps.ts";
 import { actedInRun, BACKGROUND_KINDS, BACKGROUND_RETRY_MS, retryableFailure } from "./background.ts";
-import { answeredMessage, didNothingYet, INTERRUPTED_PHRASE } from "./recover.ts";
+import { answeredMessage, bindAnsweredMessages, didNothingYet, INTERRUPTED_PHRASE } from "./recover.ts";
 import { RESTART_NOTE, takeoverNote, type TakeoverReason } from "./takeover.ts";
 
 export interface RunHostDeps {
@@ -71,6 +73,8 @@ export type TurnOutcome = { runId: string; skipped: true } | { runId: string; sk
 
 /** Module hooks around one queued turn (the task runner uses them; chat turns have none). */
 export interface TurnHooks {
+  /** A user correction consumed by the same run invalidates its previous completion decision. */
+  steered?(runId: string): void;
   /** right before the turn starts; false = skip it (the Run is marked "skipped") */
   before?(runId: string): Promise<boolean>;
   /** after the Run row and usage are written, before `done` is emitted */
@@ -161,6 +165,11 @@ interface Job {
   posted?: boolean;
   /** M14 A5: how many automatic retries came before this attempt (0 / absent = the first) */
   autoRetry?: number;
+  /** A joined user message, or the server's note for this turn (steerNote). */
+  steering?: SteeringInbox<{ messageId: string; files: FileRow[] } | SteeringNote>;
+  steeringIds?: string[];
+  /** What each accepted steering message needs to run as its own turn after Stop (rerunUnseen). */
+  steeringTurns?: Map<string, { hooks: TurnHooks; title: unknown; foldable: boolean }>;
 }
 
 /**
@@ -320,6 +329,7 @@ export class RunHost {
     const { db, usage } = this.deps;
     const taskId = input.taskId ?? null;
     const kind: RunKind = input.kind ?? (taskId ? "task" : "chat");
+    const requestedSkill = input.skill ?? slashSkill(input.text);
     const existing = await db.message.findFirst({ where: { userId: input.userId, channelId: input.channelId, taskId, role: "user", clientId: input.clientId } });
     if (existing) {
       const message = await this.emitMessage(input.userId, existing.id);
@@ -331,45 +341,75 @@ export class RunHost {
     const form = input.form ? await this.formSubmission(input.userId, input.channelId, taskId, input.form) : null;
     await this.ensureUsage(input.userId, input.channelId, taskId);
     const title = taskId ? await this.titleFor({ userId: input.userId, kind, channelId: input.channelId, taskId }) : chatTitle(input.text, files[0]?.name);
+    // Reserve against the actual owner after validation. A closing/closed run refuses admission
+    // synchronously and this send becomes a normal next turn. Explicit skills and voice keep
+    // their own configuration/ownership rather than silently changing a running turn.
+    const key = queueKey({ channelId: input.channelId, taskId });
+    const queuedAhead = (this.pending.get(key) ?? []).some((job) => !job.foldedInto && !job.controller.signal.aborted);
+    const target = !requestedSkill && !input.callId && !input.forwarded && !queuedAhead
+      ? [...this.live.values()].map((entry) => entry.job).find((job) =>
+          job.userId === input.userId && job.channelId === input.channelId && job.taskId === taskId
+          && job.kind === kind && job.started && !job.callId && !job.controller.signal.aborted)
+      : undefined;
+    const settleSteering = target?.steering?.reserve();
+    let committedSteering: { messageId: string; files: FileRow[] } | undefined;
+    try {
+      const { message, run } = await db.$transaction(async (tx) => {
+        const message = await tx.message.create({ data: {
+          userId: input.userId, channelId: input.channelId, taskId, role: "user", kind: "text", text: input.text,
+          payload: JSON.stringify({ skill: requestedSkill, ...(settleSteering ? { steeringRunId: target!.runId } : {}), ...(replyTo ? { replyTo } : {}), ...(form ? { form: form.note } : {}), ...(input.forwarded ? { forwarded: input.forwarded } : {}) }), status: "sent", clientId: input.clientId,
+          callId: input.callId ?? null,
+        } });
+        if (files.length > 0) {
+          const bound = await tx.channelFile.updateMany({ where: { id: { in: files.map((f) => f.id) }, messageId: null, deletedAt: null }, data: { messageId: message.id } });
+          if (bound.count !== files.length) throw invalid("fileIds", "a file was already sent or removed");
+        }
+        // The card is claimed only if it is still exactly as checked: a second submit (or a Skip) racing this one loses with 409.
+        if (form) {
+          const claimed = await tx.message.updateMany({ where: { id: form.cardId, payload: form.was }, data: { payload: form.next } });
+          if (claimed.count !== 1) throw staleForm();
+        }
+        // M21: the same for a quick reply: a second tap (or another option) racing this one loses with 409, and nothing is stored.
+        if (chip) {
+          const claimed = await tx.message.updateMany({ where: { id: chip.cardId, payload: chip.was, kind: "quick_replies" }, data: { payload: chip.next } });
+          if (claimed.count !== 1) throw staleQuickReply();
+        }
+        const run = settleSteering ? null : await tx.run.create({ data: { userId: input.userId, kind, status: "queued", channelId: input.channelId, taskId, title: title ? JSON.stringify(title) : null } });
+        return { message, run };
+      });
+      if (settleSteering) {
+        const owner = target!;
+        committedSteering = { messageId: message.id, files };
+        this.activeRuns.set(message.id, owner.runId);
+        (owner.steeringIds ??= []).push(message.id);
+        // Kept for Stop: a correction the model never started on runs as its own turn then.
+        (owner.steeringTurns ??= new Map()).set(message.id, {
+          hooks: input.hooks ?? {}, title,
+          foldable: kind === "chat" && taskId === null && files.length === 0 && !input.quickReply && !input.form && !input.hooks,
+        });
+        owner.folded = [...(owner.folded ?? (owner.messageId ? [owner.messageId] : [])), message.id];
+        owner.messageId = message.id;
+      }
+      await usage.touch(input.userId);
+      const shaped = await this.emitMessage(input.userId, message.id);
+      if (form) await this.emitMessage(input.userId, form.cardId);
+      if (chip) await this.emitMessage(input.userId, chip.cardId);
+      if (settleSteering) {
+        return { runId: target!.runId, message: shaped };
+      }
+      if (!run) throw new Error("Missing run for a new turn");
 
-    const { message, run } = await db.$transaction(async (tx) => {
-      const message = await tx.message.create({ data: {
-        userId: input.userId, channelId: input.channelId, taskId, role: "user", kind: "text", text: input.text,
-        payload: JSON.stringify({ skill: input.skill, ...(replyTo ? { replyTo } : {}), ...(form ? { form: form.note } : {}), ...(input.forwarded ? { forwarded: input.forwarded } : {}) }), status: "sent", clientId: input.clientId,
-        callId: input.callId ?? null,
-      } });
-      if (files.length > 0) {
-        const bound = await tx.channelFile.updateMany({ where: { id: { in: files.map((f) => f.id) }, messageId: null, deletedAt: null }, data: { messageId: message.id } });
-        if (bound.count !== files.length) throw invalid("fileIds", "a file was already sent or removed");
-      }
-      // The card is claimed only if it is still exactly as checked: a second submit (or a Skip) racing this one loses with 409.
-      if (form) {
-        const claimed = await tx.message.updateMany({ where: { id: form.cardId, payload: form.was }, data: { payload: form.next } });
-        if (claimed.count !== 1) throw staleForm();
-      }
-      // M21: the same for a quick reply: a second tap (or another option) racing this one loses with 409, and nothing is stored.
-      if (chip) {
-        const claimed = await tx.message.updateMany({ where: { id: chip.cardId, payload: chip.was, kind: "quick_replies" }, data: { payload: chip.next } });
-        if (claimed.count !== 1) throw staleQuickReply();
-      }
-      const run = await tx.run.create({ data: { userId: input.userId, kind, status: "queued", channelId: input.channelId, taskId, title: title ? JSON.stringify(title) : null } });
-      return { message, run };
-    });
-    await usage.touch(input.userId);
-    const shaped = await this.emitMessage(input.userId, message.id);
-    if (form) await this.emitMessage(input.userId, form.cardId);
-    if (chip) await this.emitMessage(input.userId, chip.cardId);
-
-    const job: Job = {
-      userId: input.userId, channelId: input.channelId, taskId, recordTaskId: taskId, kind, runId: run.id, messageId: message.id,
-      prompt: input.text, skill: input.skill, files, hooks: input.hooks ?? {}, controller: new AbortController(),
-      started: false, stopped: false, lastTextId: null, pinModelId: null, callId: input.callId ?? null,
-      // A1: only plain typed messages fold (a quote reply too: its excerpt stays in the stored payload).
-      foldable: kind === "chat" && taskId === null && files.length === 0 && !input.skill && !input.quickReply && !input.form && !input.callId && !input.hooks,
-    };
-    this.activeRuns.set(message.id, run.id);
-    this.enqueue(queueKey(job), this.track(job, () => this.activeRuns.delete(message.id)), job);
-    return { runId: run.id, message: shaped };
+      const job: Job = {
+        userId: input.userId, channelId: input.channelId, taskId, recordTaskId: taskId, kind, runId: run.id, messageId: message.id,
+        prompt: input.text, skill: requestedSkill, files, hooks: input.hooks ?? {}, controller: new AbortController(),
+        started: false, stopped: false, lastTextId: null, pinModelId: null, callId: input.callId ?? null,
+        // A1: only plain typed messages fold (a quote reply too: its excerpt stays in the stored payload).
+        foldable: kind === "chat" && taskId === null && files.length === 0 && !requestedSkill && !input.quickReply && !input.form && !input.callId && !input.hooks,
+      };
+      this.activeRuns.set(message.id, run.id);
+      this.enqueue(queueKey(job), this.track(job, () => this.activeRuns.delete(message.id)), job);
+      return { runId: run.id, message: shaped };
+    } finally { settleSteering?.(committedSteering); }
   }
 
   /**
@@ -442,7 +482,7 @@ export class RunHost {
       if (this.activeRuns.has(message.id)) throw new HttpError(409, "conflict", "This turn is running again already.");
       prompt = message.text;
       const payload = parseObject(message.payload);
-      skill = typeof payload.skill === "string" ? payload.skill : null;
+      skill = of.skill ?? (typeof payload.skill === "string" ? payload.skill : null);
       files = await db.channelFile.findMany({ where: { messageId: message.id, userId, deletedAt: null }, orderBy: { createdAt: "asc" } });
     }
     await this.ensureUsage(userId, of.channelId, of.taskId);
@@ -450,7 +490,11 @@ export class RunHost {
     const folded = of.messageId ? await this.burstOf(userId, runId, of) : [];
     // M14 (A3): the retry starts with what the failed attempt already did (its steps and bubbles).
     const takeover = await this.takeoverFor(failed.id, failed.status === "cancelled" ? "restart" : "failed");
-    const run = await db.run.create({ data: { userId, kind: of.kind, status: "queued", channelId: of.channelId, taskId: of.recordTaskId, title: failed.title } });
+    const run = await db.$transaction(async (tx) => {
+      const created = await tx.run.create({ data: { userId, kind: of.kind, status: "queued", channelId: of.channelId, taskId: of.recordTaskId, title: failed.title } });
+      await bindAnsweredMessages(tx, userId, created.id, folded.length ? folded : of.messageId ? [of.messageId] : []);
+      return created;
+    });
     const job: Job = {
       userId, channelId: of.channelId, taskId: of.taskId, recordTaskId: of.recordTaskId, kind: of.kind, runId: run.id, messageId: of.messageId,
       prompt, skill, files, hooks: hooksFor({ userId, channelId: of.channelId, taskId: of.taskId, recordTaskId: of.recordTaskId, kind: of.kind, messageId: of.messageId }),
@@ -503,6 +547,22 @@ export class RunHost {
   pendingChat(userId: string, channelId: string): number {
     return (this.pending.get(queueKey({ channelId, taskId: null })) ?? [])
       .filter((job) => job.userId === userId && job.kind === "chat" && !job.started && !job.foldedInto && !job.controller.signal.aborted).length;
+  }
+
+  /**
+   * A server note for the chat turn running in this thread, but only while a user message that
+   * joined it (steering) still waits to be read: the turn reads the note with that message, as a
+   * turn queued behind would read it in its context (an approval decided meanwhile). False = no
+   * such turn; the caller queues its own.
+   */
+  steerNote(userId: string, channelId: string, note: string): boolean {
+    const job = [...this.live.values()].map((entry) => entry.job).find((candidate) =>
+      candidate.userId === userId && candidate.channelId === channelId && candidate.taskId === null && candidate.kind === "chat"
+      && candidate.started && !candidate.controller.signal.aborted && !!candidate.steering?.waiting());
+    const settle = job?.steering?.reserve();
+    if (!settle) return false;
+    settle({ note });
+    return true;
   }
 
   /**
@@ -563,6 +623,7 @@ export class RunHost {
     this.live.set(job.runId, { job, settled });
     return () => this.execute(job).finally(() => {
       this.live.delete(job.runId);
+      for (const id of job.steeringIds ?? []) this.activeRuns.delete(id);
       done?.();
       settle();
     });
@@ -617,7 +678,7 @@ export class RunHost {
         const claimed = await db.run.updateMany({ where: { id: run.id, status: run.status, startedAt: null }, data: { status: next } });
         if (claimed.count !== 1) continue;
         handled++;
-        await this.requeue(run, [message], null, next);
+        await this.requeue(run, await this.boundInputs(run, message), null, next);
         continue;
       }
       const cancelled = await db.run.updateMany({ where: { id: run.id, status: run.status }, data: { status: "cancelled", finishedAt: new Date() } });
@@ -635,10 +696,15 @@ export class RunHost {
       // A3 note of what it did.
       try {
         // A1 + F1: the plain messages it folded are answered by its re-run or card, not one by one.
+        const previouslyTaken = taken.size;
         const burst = await this.leftBurst(run, message, stale, taken);
-        handled += burst.length - 1;
+        handled += taken.size - previouslyTaken;
         if (await didNothingYet(db, run, now)) {
-          const fresh = await db.run.create({ data: { userId: run.userId, kind: "chat", status: "queued", channelId: run.channelId, taskId: null, title: run.title } });
+          const fresh = await db.$transaction(async (tx) => {
+            const created = await tx.run.create({ data: { userId: run.userId, kind: "chat", status: "queued", channelId: run.channelId, taskId: null, title: run.title } });
+            await bindAnsweredMessages(tx, run.userId, created.id, burst.map((row) => row.id));
+            return created;
+          });
           await this.requeue(fresh, burst, (await this.takeoverFor(run.id, "restart")) ?? RESTART_NOTE, "queued");
         } else {
           await this.interruptedCard(run, burst.map((m) => m.id));
@@ -658,7 +724,7 @@ export class RunHost {
     const { db } = this.deps;
     // A1 + F1: a left folding turn's burst (oldest first) is answered as one turn on its newest message.
     const message = burst.at(-1)!;
-    const payload = parseObject(message.payload);
+    const payload = parseObject(burst[0]!.payload);
     const files = await db.channelFile.findMany({ where: { messageId: message.id, userId: run.userId, deletedAt: null }, orderBy: { createdAt: "asc" } });
     const job: Job = {
       userId: run.userId, channelId: run.channelId!, taskId: null, recordTaskId: null, kind: "chat", runId: run.id, messageId: message.id,
@@ -683,8 +749,15 @@ export class RunHost {
    */
   private async leftBurst(left: RunRow, message: StoredMessage, stale: RunRow[], taken: Set<string>): Promise<StoredMessage[]> {
     const { db, events } = this.deps;
-    const burst = [message];
-    if (!left.startedAt || !(await this.plainMessage(message))) return burst;
+    const burst = await this.boundInputs(left, message);
+    // Steering has no independent Run to replay. Its durable link keeps it attached to the
+    // interrupted turn's recovery/retry, including input accepted just before shutdown.
+    const steering = await db.message.findMany({
+      where: { userId: left.userId, channelId: left.channelId!, taskId: left.taskId, role: "user", id: { notIn: burst.map((row) => row.id) }, payload: { contains: `"steeringRunId":${JSON.stringify(left.id)}` } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true, text: true, payload: true, callId: true },
+    });
+    if (!left.startedAt || !(await this.plainMessage(message))) return [...burst, ...steering];
     for (const run of stale) {
       if (run.createdAt.getTime() <= left.createdAt.getTime() || run.id === left.id) continue;
       if (run.createdAt.getTime() > left.startedAt.getTime()) break;
@@ -700,7 +773,22 @@ export class RunHost {
       burst.push(next);
     }
     if (burst.length > 1) log.info("left chat burst recovered", { runId: left.id, messages: burst.length });
-    return burst;
+    return [...burst, ...steering];
+  }
+
+  /** A persisted retry/resume binding preserves all input receipts, not just the latest row. */
+  private async boundInputs(run: RunRow, message: StoredMessage): Promise<StoredMessage[]> {
+    if (!run.channelId) return [message];
+    const payload = parseObject(message.payload);
+    const ids = payload.answeringRunId === run.id && Array.isArray(payload.answeringMessageIds)
+      ? payload.answeringMessageIds.filter((id): id is string => typeof id === "string" && id !== message.id) : [];
+    if (!ids.length) return [message];
+    const rows = await this.deps.db.message.findMany({
+      where: { id: { in: ids }, userId: run.userId, channelId: run.channelId, taskId: run.taskId, role: "user" },
+      select: { id: true, text: true, payload: true, callId: true },
+    });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    return [...new Set(ids)].flatMap((id) => byId.has(id) ? [byId.get(id)!] : []).concat(message);
   }
 
   /** A1: a stored message that could fold (no files, /skill, form or call; a quote reply folds). */
@@ -714,8 +802,11 @@ export class RunHost {
   private async interruptedCard(run: RunRow, burst: string[]): Promise<void> {
     const { db } = this.deps;
     const messageId = burst.at(-1)!;
+    const original = await db.message.findFirst({ where: { id: burst[0], userId: run.userId }, select: { payload: true, text: true } });
+    const storedSkill = original ? parseObject(original.payload).skill : null;
+    const skill = typeof storedSkill === "string" ? storedSkill : original ? slashSkill(original.text) : null;
     const retryOf: RetryOf = {
-      kind: "chat", channelId: run.channelId!, taskId: null, recordTaskId: null, messageId, prompt: null, skill: null,
+      kind: "chat", channelId: run.channelId!, taskId: null, recordTaskId: null, messageId, prompt: null, skill,
       ...(burst.length > 1 ? { folded: burst } : {}),
     };
     const payload = { phrase: { key: INTERRUPTED_PHRASE }, modelId: null, modelLabel: null, runId: run.id, retry: true, state: "open", retryOf };
@@ -888,6 +979,7 @@ export class RunHost {
       userMessage = turnMessage(job);
     }
     const sink = this.sink(job);
+    if ((job.kind === "chat" || job.kind === "task") && !job.callId) job.steering = new SteeringInbox();
     let result: TurnResult;
     let steps: StepRecorder | undefined;
     if (signal.aborted) {
@@ -902,6 +994,24 @@ export class RunHost {
           ...(job.messageId ? { onFirstEvent: this.seenOnce(job.userId, job.folded ?? [job.messageId]) } : {}),
           ...(job.pinModelId ? { pinModelId: job.pinModelId } : {}),
           ...(job.takeover ? { takeover: job.takeover } : {}),
+          ...(job.steering ? { steering: {
+            open: () => job.steering!.open(),
+            take: async (closeIfEmpty = false): Promise<SteeringItem[]> => {
+              const batch = await job.steering!.take(closeIfEmpty);
+              const items: SteeringItem[] = [];
+              let joined = false;
+              for (const item of batch) {
+                if ("note" in item) { items.push(item); continue; }
+                const message = await loadMessage(db, item.messageId);
+                if (!message) throw new Error("Accepted steering message is missing");
+                items.push({ userMessage: message, attachments: await resolveAttachments(files, item.files), onFirstEvent: this.seenOnce(job.userId, [message.id]) });
+                joined = true;
+              }
+              if (joined) job.hooks.steered?.(job.runId);
+              return items;
+            },
+            close: () => job.steering!.close(),
+          } } : {}),
         };
         result = job.hooks.around ? await job.hooks.around(input, (next) => agent.runTurn(next)) : await agent.runTurn(input);
       } catch (error) {
@@ -909,7 +1019,56 @@ export class RunHost {
         result = { status: "failed", error: internalFailure(), usage: { ...NO_USAGE }, model: null };
       }
     }
+    await job.steering?.close();
+    // Before `done`, so a correction's own POST stream follows it to its new turn (runOf).
+    if (result.status === "cancelled") await this.rerunUnseen(job);
     await this.finish(job, sink, result, steps);
+  }
+
+  /**
+   * Stop ends the turn the model was working on, not the user's corrections it never read: each
+   * accepted steering message still unseen (the model hadn't started on it) runs as its own turn
+   * after this one, as if it had been queued behind it (M10). One the model started answering is
+   * part of the stopped turn and stays answered by it. A delete (cancel) or a shutdown runs none:
+   * the thread is going away, or boot recovery answers them with the interrupted turn.
+   */
+  private async rerunUnseen(job: Job): Promise<void> {
+    if (!job.stopped || this.stopping.signal.aborted || !job.steeringIds?.length) return;
+    const { db } = this.deps;
+    try {
+      const unseen = await db.message.findMany({
+        where: { id: { in: job.steeringIds }, userId: job.userId, status: { not: "seen" } },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { id: true, text: true },
+      });
+      for (const message of unseen) {
+        const turn = job.steeringTurns?.get(message.id);
+        if (!turn) continue;
+        const files = await db.channelFile.findMany({ where: { messageId: message.id, userId: job.userId, deletedAt: null }, orderBy: { createdAt: "asc" } });
+        const run = await db.$transaction(async (tx) => {
+          const created = await tx.run.create({ data: { userId: job.userId, kind: job.kind, status: "queued", channelId: job.channelId, taskId: job.taskId, title: turn.title ? JSON.stringify(turn.title) : null } });
+          // Recovery after a restart finds this message as the one its turn answers.
+          await bindAnsweredMessages(tx, job.userId, created.id, [message.id]);
+          return created;
+        });
+        const next: Job = {
+          userId: job.userId, channelId: job.channelId, taskId: job.taskId, recordTaskId: job.taskId, kind: job.kind, runId: run.id, messageId: message.id,
+          prompt: message.text, skill: null, files, hooks: turn.hooks, controller: new AbortController(),
+          started: false, stopped: false, lastTextId: null, pinModelId: null, callId: null, foldable: turn.foldable,
+        };
+        // The stopped turn's cleanup no longer owns it; its own turn does.
+        job.steeringIds = job.steeringIds.filter((id) => id !== message.id);
+        this.activeRuns.set(message.id, run.id);
+        this.enqueue(queueKey(next), this.track(next, () => this.activeRuns.delete(message.id)), next);
+      }
+    } catch (error) {
+      log.error("steering rerun after Stop failed", { runId: job.runId, error: { name: (error as Error).name } });
+    }
+  }
+
+  /** The run answering a stored user message right now (a POST stream follows it), if any. */
+  runOf(messageId: string): string | null {
+    return this.activeRuns.get(messageId) ?? null;
   }
 
   /**
@@ -1145,7 +1304,7 @@ export class RunHost {
     const retry = error.key !== NO_MODEL_PHRASE && !SETUP_PHRASES.has(error.key ?? "") && !job.noRetry && this.retryHooks.has(job.kind);
     const retryOf: RetryOf = {
       kind: job.kind, channelId: job.channelId, taskId: job.taskId, recordTaskId: job.recordTaskId, messageId: job.messageId,
-      prompt: job.messageId ? null : job.prompt, skill: job.messageId ? null : job.skill,
+      prompt: job.messageId ? null : job.prompt, skill: job.skill,
       // A1: a folded turn's card keeps the whole burst, so its Retry marks every message seen.
       ...(job.messageId && job.folded && job.folded.length > 1 ? { folded: job.folded } : {}),
     };

@@ -32,6 +32,17 @@ async function start(opts: { memory?: boolean } = {}) {
 }
 
 describe("share_finding", () => {
+  test("raw proactive posts remove history notes before adding sources or sending messages", async () => {
+    app = await start();
+    const run = await checkin(app,
+      [call("post_message", { text: "Your meeting moved.[tools: calendar_read → ok]" })],
+      [call("share_finding", { ...FINDING, text: `${FINDING.text}[attachment][tools: web_search → ok]` })],
+      [call("finish_checkin", { nothingNeeded: false })],
+    );
+    expect(run.status).toBe("completed");
+    expect((await mainThread(app)).map((m) => m.text)).toEqual(["Your meeting moved.", POSTED]);
+  });
+
   test("posts the finding with its sources line (titles escaped) and the run counts as posted today", async () => {
     app = await start();
     const run = await checkin(app, [call("share_finding", FINDING)], [call("finish_checkin", { nothingNeeded: false })]);

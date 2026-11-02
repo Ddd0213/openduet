@@ -7,6 +7,7 @@ import type { ToolProvider, TurnInput } from "../agent/types.ts";
 import type { StatusKey } from "../contract/common.ts";
 import { HttpError } from "../http.ts";
 import type { ToolResultBlock, ToolUseBlock } from "../llm/index.ts";
+import { stripDigests } from "../runs/takeover.ts";
 import { scheduleFrom, type TaskService } from "../tasks/service.ts";
 import { normalizeSchedule } from "./schedule.ts";
 import { ROUTINE_STATE_MAX, type RoutineService } from "./service.ts";
@@ -134,7 +135,9 @@ export function createRoutineTools(deps: { tasks: TaskService; routines: Routine
         }
         case "post_message": {
           const state = routines.stateOf(input.runId);
-          const { text } = schemas.post_message.parse(call.input);
+          // The unfiltered sink skips the tool sink's cleanup too, so the copied history notes go here.
+          const text = stripDigests(schemas.post_message.parse(call.input).text);
+          if (!text.trim()) return reply({ error: "Write a message for the user, not only internal history notes." }, true);
           // The unfiltered sink: a quiet run's own text is muted, this line is meant to be seen.
           await (state?.raw ?? input.sink).upsertMessage({ role: "assistant", kind: "text", text });
           if (state) state.visible = true;

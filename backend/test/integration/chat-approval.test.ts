@@ -1,8 +1,8 @@
 // M21 (#12) end to end, wired like src/index.ts (the TaskService is the approval service's resumer):
 // a chat turn's approval cards (no task) carry the chat on once they're decided, the same path a
 // task's session uses. Two cards of one turn, one approved and one declined: one carried-on chat
-// turn that sees both outcomes (a server note, never stored). A chat message already waiting in
-// the thread reads the decided cards itself, so no extra turn is added. Scripted model, fake Composio.
+// turn that sees both outcomes (a server note, never stored). A chat message already waiting to
+// join the running turn gets the outcomes with it, so no extra turn is added. Scripted model, fake Composio.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createConnectorsModule } from "../../src/connectors/module.ts";
 import { FakeComposio } from "../helpers/fake-composio.ts";
@@ -103,7 +103,7 @@ describe("chat approvals carry the chat on", () => {
     expect(await fixture.db.run.count({ where: { channelId, kind: "chat" } })).toBe(1);
   });
 
-  test("a chat message already waiting in the thread reads the decided card itself: no extra turn", async () => {
+  test("a chat message already waiting in the thread gets the decided card with it: no extra turn", async () => {
     const channelId = await newChannel("Waiting message");
     llm.script("chat", [call("execute_app_tools", { calls: [{ tool: "GMAIL_SEND_EMAIL", arguments: email("kim@example.com") }] })], [text("Waiting for your OK.")]);
     await readSse(await send(channelId, "Email Kim the deck", "chat-appr-2"));
@@ -122,9 +122,12 @@ describe("chat approvals carry the chat on", () => {
     release.resolve();
     await Promise.all([readSse(busy), readSse(waiting)]);
     await fixture.runs.idle();
-    // Only the waiting message's own turn ran after the decision, and it saw the decided card.
+    // The waiting message joined the busy turn (steering) and the decision's note came with it:
+    // one more model call after the decision, no extra turn.
     expect(llm.sent("chat").length).toBe(before + 1);
-    expect(llm.sent("chat").at(-1)!.system).toContain(card.id);
-    expect(await fixture.db.run.count({ where: { channelId, kind: "chat" } })).toBe(3);
+    const last = JSON.stringify(llm.sent("chat").at(-1)!.messages);
+    expect(last).toContain("Did the email go out?");
+    expect(last).toContain(`Approval ${card.id}: the user approved it`);
+    expect(await fixture.db.run.count({ where: { channelId, kind: "chat" } })).toBe(2);
   });
 });

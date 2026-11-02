@@ -2,21 +2,22 @@ import { z } from "zod";
 import type { Db } from "../db.ts";
 import type { Config } from "../config.ts";
 import { isBuiltin, searchOffered, type BuiltinConfig } from "../builtins/config.ts";
-import { LlmError, type Fetch, type LlmEvent, type Model, type ModelIdentity, type ModelResolver, type ModelRole, type RegisteredLlm, type ThinkingLevel, type Tool, type ToolResultBlock, type ToolUseBlock } from "../llm/index.ts";
+import { LlmError, type Fetch, type LlmEvent, type Message, type Model, type ModelIdentity, type ModelResolver, type ModelRole, type RegisteredLlm, type ThinkingLevel, type Tool, type ToolResultBlock, type ToolUseBlock } from "../llm/index.ts";
 import { log } from "../log.ts";
 import type { Lookup } from "../web/fetch.ts";
 import { isBackgroundTurn } from "./background.ts";
-import { buildContext, withAttachments } from "./context.ts";
+import { buildContext, steeringContext, withAttachments } from "./context.ts";
 import { environmentLines, isEnvironmentSource, type ComputerFacts } from "./environment.ts";
 import { TextBubbles } from "./bubbles.ts";
 import { CLAIM_NOTE, capOlderResults, claimsDeliverable, EMPTY_REPLY_NOTE, isPass, pushNote, READ_ONLY_TOOLS, REPEAT_LIMIT, repeatNote, stable, TOOL_THREW, trimImages, VISIBLE_TOOLS, WRAP_UP_NOTE } from "./harness.ts";
 import { backgroundGuard, type BackgroundGuard } from "./read-only.ts";
 import { defaultEntry, indexLines, LOAD_TOOLS, loadAnswer, MAX_STICKY, mentionedConnectors, parseLoadArgs, planLoading, PRELOAD_PER_CONNECTOR, readyNames, resolveLoad, toolsForCall, toolsOfGroups, type LoadPlan } from "./loading.ts";
 import { frequentTools } from "../runs/tool-history.ts";
+import { stripDigests } from "../runs/takeover.ts";
 import { pendingApproval, usedNativeSearch, waitsForApproval, type ReplyTurn } from "./replies.ts";
 import { MISSING_SETUP_CHIPS_NOTE, postInvitation } from "../soul/setup.ts";
 import { createToolExecutor, functionTools, TOOL_STATUS } from "./tools.ts";
-import type { AgentRuntime, RunKind, ToolProvider, TurnInput, TurnResult, TurnSink } from "./types.ts";
+import { isSteeringNote, type AgentRuntime, type RunKind, type ToolProvider, type TurnInput, type TurnResult, type TurnSink } from "./types.ts";
 import { wrapToolResult } from "./untrusted.ts";
 import { clearFinishText, noteFinishText } from "../tasks/result-text.ts";
 
@@ -147,7 +148,19 @@ async function watched<T>(input: TurnInput, limitMs: number, run: (input: TurnIn
     if (abandoned) throw new ToolAbandoned();
     return write(...args);
   };
-  const sink: TurnSink = { status: guard((s) => input.sink.status(s)), typing: guard((on) => input.sink.typing(on)), upsertMessage: guard((d) => input.sink.upsertMessage(d)) };
+  const sink: TurnSink = {
+    status: guard((s) => input.sink.status(s)), typing: guard((on) => input.sink.typing(on)),
+    upsertMessage: guard((draft) => {
+      // Tools can post prose directly (quick replies, ask_user, post_message, card captions),
+      // without going through TextBubbles. Clean it before persistence and SSE too.
+      if (draft.role === "assistant" && "text" in draft && typeof draft.text === "string") {
+        const text = stripDigests(draft.text);
+        if (draft.kind === "text" && !text.trim()) throw new Error("Write a message for the user, not only internal history notes.");
+        return input.sink.upsertMessage({ ...draft, text });
+      }
+      return input.sink.upsertMessage(draft);
+    }),
+  };
   const call: TurnInput = { ...input, sink, signal: AbortSignal.any([input.signal, own.signal]) };
   let timer: ReturnType<typeof setTimeout> | undefined;
   let onAbort: (() => void) | undefined;
@@ -317,6 +330,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentRuntime {
   }
 
   async function runTurn(input: TurnInput): Promise<TurnResult> {
+    input.steering?.open();
     const result: TurnResult = {
       status: "completed",
       error: null,
@@ -338,6 +352,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentRuntime {
     let said = false;
     let endedBy: string | null = null;
     const turnTools: { name: string; ok: boolean }[] = [];
+    let inputToolStart = 0;
     const repeats = new Map<string, number>();
     try {
       if (input.signal.aborted) {
@@ -403,6 +418,42 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentRuntime {
       const messages = withAttachments(context.messages, context.attachments, candidates.every(model => model.capabilities.vision));
       // M23 W4: what the quick-reply rules need to know about this turn so far (agent/replies.ts).
       const replyTurn: ReplyTurn = { rules: context.replies, searched: false, approvalWaiting: false };
+      let steeringReceipts: (() => Promise<void>)[] = [];
+      /** System-prompt lines the providers added for messages that joined this turn (their files). */
+      const steeringLines: string[] = [];
+      const consumeSteering = async (closeIfEmpty = false): Promise<boolean> => {
+        if (input.signal.aborted) return false;
+        const incoming = await input.steering?.take(closeIfEmpty) ?? [];
+        for (const item of incoming) {
+          const message: Message = isSteeringNote(item)
+            ? { role: "user", content: [{ type: "text", text: item.note }] }
+            : await steeringContext(deps.db, item, candidates.every((candidate) => candidate.capabilities.vision));
+          const last = messages.at(-1);
+          if (last?.role === "user") last.content.push(...message.content);
+          else messages.push(message);
+          // A server note has no message of its own: the turn still answers the user's latest one.
+          if (isSteeringNote(item)) continue;
+          steeringReceipts.push(item.onFirstEvent);
+          turn = { ...turn, userMessage: item.userMessage, attachments: item.attachments };
+          if (!item.attachments.length) continue;
+          for (const provider of deps.providers ?? []) {
+            try {
+              if (provider.steeringInstructions) steeringLines.push(...(await provider.steeringInstructions(turn)));
+            } catch (error) {
+              log.warn("steering instructions failed", { provider: provider.name, error: { name: (error as Error)?.name ?? "Error" } });
+            }
+          }
+        }
+        if (incoming.length) {
+          // A correction needs an answer even if the earlier request was already satisfied.
+          visible = passed = reacted = nudged = claimChecked = setupChipsNudged = false;
+          inputToolStart = turnTools.length;
+          endedBy = null;
+          context.replies.setup = null;
+          replyTurn.rules = { ...replyTurn.rules, open: false, setup: null };
+        }
+        return incoming.length > 0;
+      };
 
       await input.sink.status("thinking");
       await input.sink.typing(true);
@@ -415,6 +466,8 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentRuntime {
           result.status = "cancelled";
           break;
         }
+        await consumeSteering();
+        if (input.signal.aborted) { result.status = "cancelled"; break; }
         const wrapUp = round === maxRounds;
         const model = result.model
           ? llm.models.models.find(candidate => candidate.id === result.model!.modelId && candidate.provider === result.model!.providerId)
@@ -422,7 +475,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentRuntime {
         const { nativeWeb, builtins, tools: available, serverTools } = offered(model);
         // M29: the core tools, load_tools and what's loaded (only grows, appended at the end).
         const tools = toolsForCall(available, plan, loaded);
-        const system = context.system + extra.instructions + (!nativeWeb && !searchOffered(deps.config)
+        const system = context.system + extra.instructions + (steeringLines.length ? `\n${steeringLines.join("\n")}` : "") + (!nativeWeb && !searchOffered(deps.config)
           ? `\nWeb search isn't set up yet on this server. There is no web_search tool; tell the user honestly when search is needed.${guard ? "" : " You may still read a supplied URL with web_fetch."}`
           : "") + (index.length ? `\n${index.join("\n")}` : "");
         const calls: ToolUseBlock[] = [];
@@ -446,9 +499,13 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentRuntime {
           signal: input.signal,
         })) {
           // Seen receipt (M9): the model has started answering this turn.
-          if (!answering && ((event.type === "text_delta" && typeof event.text === "string" && event.text !== "") || event.type === "thinking_delta" || event.type === "tool_call")) {
+          const beginsAnswer = (event.type === "text_delta" && typeof event.text === "string" && event.text !== "") || event.type === "thinking_delta" || event.type === "tool_call";
+          if (!answering && beginsAnswer) {
             answering = true;
             await firstEvent(input);
+          }
+          if (beginsAnswer) {
+            for (const seen of steeringReceipts.splice(0)) await seen();
           }
           if (event.type === "text_delta") {
             const text = z.string().parse(event.text);
@@ -510,7 +567,12 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentRuntime {
           continue;
         }
         // The wrap-up call had no tools: whatever it said ends the turn.
-        if (wrapUp) break;
+        if (wrapUp) {
+          // A final poll is atomic with closing admission; a late accepted correction gets its
+          // own answer in this run, with tools still disabled after the step budget.
+          if (await consumeSteering(true)) { round--; continue; }
+          break;
+        }
         for (const block of done.message.content) {
           if (block.type !== "tool_use") continue;
           const call = ToolCall.parse(block);
@@ -519,6 +581,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentRuntime {
         const reply = done.message.content.flatMap(block => (block.type === "text" ? [block.text] : [])).join("");
         const silent = isPass(reply, reacted);
         if (!calls.length) {
+          if (await consumeSteering()) continue;
           // Native server tools are opaque provider blocks. Their results are already in the assistant message;
           // replay that message to the pinned model so it can produce the visible answer.
           if (done.stopReason === "tool_use" && done.message.content.some(block => block.type === "provider_data")) continue;
@@ -527,7 +590,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentRuntime {
           // such as web_search ran; a turn that passed, already said something, or posted something
           // visible with a successful react / quick_replies / card tool is complete. A second empty
           // reply ends quietly.
-          const posted = turnTools.some(tool => tool.ok && VISIBLE_TOOLS.has(tool.name));
+          const posted = turnTools.slice(inputToolStart).some(tool => tool.ok && VISIBLE_TOOLS.has(tool.name));
           if (replies && !roundText && !silent && !visible && !passed && !posted && !nudged && round < maxRounds - 1) {
             nudged = true;
             pushNote(messages, EMPTY_REPLY_NOTE);
@@ -551,6 +614,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentRuntime {
             pushNote(messages, CLAIM_NOTE);
             continue;
           }
+          if (await consumeSteering(true)) continue;
           break;
         }
         if (silent) passed = true;
@@ -627,7 +691,16 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentRuntime {
             await input.sink.status("thinking");
           }
         }
-        if (endTurn) break;
+        if (endTurn) {
+          // Close tool-call pairs before inserting user input, even when an end-turn tool
+          // left later calls in the same batch unexecuted. Never execute those stale calls.
+          for (const call of calls) if (!results.some((block) => block.toolUseId === call.id)) {
+            results.push({ type: "tool_result" as const, toolUseId: call.id, isError: true, content: [{ type: "text" as const, text: "Not executed: an earlier tool ended this batch." }] });
+          }
+          messages.push({ role: "user", content: results });
+          if (await consumeSteering(true)) continue;
+          break;
+        }
         // B4: earlier results over ~20k chars keep only their head and tail from now on; this round's
         // results go to the next call whole.
         capOlderResults(messages);
@@ -658,6 +731,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentRuntime {
               ? { key: NO_MODEL_KEY }
               : { key: "system.model_unreachable", params: { reason: { type: "text", value: "internal" } } };
     } finally {
+      await input.steering?.close();
       clearFinishText(input.runId);
       for (const provider of deps.providers ?? []) {
         try {
@@ -674,6 +748,9 @@ export function createAgentRuntime(deps: AgentRuntimeDeps): AgentRuntime {
         await input.sink.status(null);
       }
     }
+    // Stop can arrive during a final text flush or from a provider that returns a normal done
+    // after its abort signal. Cancellation still wins over that provisional completion.
+    if (input.signal.aborted) { result.status = "cancelled"; result.error = null; }
     return result;
   }
 }

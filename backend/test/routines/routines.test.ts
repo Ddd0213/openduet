@@ -200,6 +200,11 @@ describe("slots", () => {
     const thread = await mainThread(app);
     expect(thread.slice(before).map((m) => m.text)).toEqual(["Dana needs the contract signed today."]);
     expect((await routineRuns(row.id)).at(-1)).toMatchObject({ status: "completed" });
+
+    // post_message writes past the tool sink's cleanup: a copied history note is still dropped there.
+    app.llm.script("proactive", [call("post_message", { text: "Sign it today.[tools: read_inbox → ok][attachment]" })], [text("done")]);
+    await tickAt("2030-10-25T13:00:10.000Z");
+    expect((await mainThread(app)).at(-1)!.text).toBe("Sign it today.");
   });
 });
 

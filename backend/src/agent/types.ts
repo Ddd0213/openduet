@@ -47,6 +47,28 @@ export type Attachment =
   | { fileId: string; name: string; mime: string; type: "image"; mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; data: string }
   | { fileId: string; name: string; mime: string; type: "text"; text: string; truncated: boolean };
 
+export interface SteeringMessage {
+  userMessage: Message;
+  attachments: Attachment[];
+  onFirstEvent: () => Promise<void>;
+}
+
+/**
+ * The server's note for the running turn (no user message of its own): what became of approval
+ * cards decided while a correction waited for this turn (RunHost.steerNote).
+ */
+export interface SteeringNote { note: string }
+
+export type SteeringItem = SteeringMessage | SteeringNote;
+export const isSteeringNote = (item: SteeringItem): item is SteeringNote => "note" in item && !("userMessage" in item);
+
+/** New user input for this same run; the host owns persistence, admission and receipts. */
+export interface TurnSteering {
+  open(): void;
+  take(closeIfEmpty?: boolean): Promise<SteeringItem[]>;
+  close(): Promise<void>;
+}
+
 export interface TurnInput {
   userId: string;
   channelId: string;
@@ -87,6 +109,7 @@ export interface TurnInput {
    * English, set by the run host; buildContext puts it in front of the turn.
    */
   takeover?: string;
+  steering?: TurnSteering;
 }
 
 /** M12: what providers may know about the turn's model. */
@@ -139,6 +162,11 @@ export interface ToolProvider {
   tools(input: TurnInput): Promise<Tool[]>;
   /** extra system-prompt lines for this turn (connected apps, pending approvals, task state) */
   instructions?(input: TurnInput): Promise<string[]>;
+  /**
+   * Extra system-prompt lines for a user message that joined the running turn (steering). `input`
+   * is the turn with that message and its attachments (e.g. the computer copies them to /workspace).
+   */
+  steeringInstructions?(input: TurnInput): Promise<string[]>;
   /** the status pill while this call runs; undefined = "checking" */
   status?(call: ToolUseBlock): StatusKey | undefined;
   /** endTurn = stop the loop after this round (e.g. waiting for the user's choice) */

@@ -146,6 +146,8 @@ describe("POST /api/channels/:id/stop", () => {
     const first = await send(channelId, "First question", "stop-queue-1");
     await held.reached;
     llm.script("chat", [text("Second answer")]);
+    // Sent while the first turn runs, it steers that turn; the model never reads it before Stop,
+    // so it runs as its own turn afterwards and its stream follows it there.
     const second = await send(channelId, "Second question", "stop-queue-2");
     expect(second.status).toBe(200);
     expect(StopResponse.parse(await (await stopChannel(channelId)).json())).toEqual({ stopped: 1 });
@@ -239,6 +241,7 @@ describe("POST /api/tasks/:id/stop", () => {
     const reply = await req(`/api/tasks/${task.id}/messages`, "POST", { text: "Make it shorter", clientId: "stop-task-q-1" });
     expect(reply.status).toBe(200);
     expect(StopResponse.parse(await (await stopTask(task.id)).json())).toEqual({ stopped: 1 });
+    // The reply steered the running turn, which never read it: it runs as its own turn after Stop.
     const frames = await readSse(reply);
     expect(ownDone(frames).payload).toMatchObject({ status: "completed", taskId: task.id });
     await fixture.runs.idle();

@@ -16,6 +16,20 @@ const SEND_GAP_MS = 5_000;
 /** M14: the card a long or busy chat turn the restart cut off gets (key for B / the lead to add). */
 export const INTERRUPTED_PHRASE = "system.turn_interrupted";
 
+/** Bind a retry/resume to its input in the same transaction that creates its Run. Unlike the
+ * legacy title/time heuristic, this also works for old messages and the latest steering input. */
+export async function bindAnsweredMessages(db: Pick<Db, "message">, userId: string, runId: string, ids: string[]): Promise<void> {
+  const id = ids.at(-1);
+  if (!id) return;
+  const row = await db.message.findFirstOrThrow({ where: { id, userId, role: "user" }, select: { payload: true } });
+  let payload: Record<string, unknown> = {};
+  try {
+    const value: unknown = JSON.parse(row.payload);
+    if (value && typeof value === "object" && !Array.isArray(value)) payload = value as Record<string, unknown>;
+  } catch { /* Older malformed payloads still have usable user text. */ }
+  await db.message.update({ where: { id }, data: { payload: JSON.stringify({ ...payload, answeringRunId: runId, answeringMessageIds: ids }) } });
+}
+
 function titleOf(raw: string | null): string | null {
   if (!raw) return null;
   try {
@@ -27,11 +41,17 @@ function titleOf(raw: string | null): string | null {
 }
 
 /**
- * The stored user message a chat run answered: written in the same send (≤ 5 s before the run),
- * in the run's thread, its chat title equal to the run's. null when there's none (a submitted
- * carry-on turn, a model_error retry of an older message, or the message was deleted).
+ * A retry/resume uses its explicit durable input binding. Legacy/new-send runs fall back to
+ * the message written in the same send (≤ 5 s before the run), in its thread with a matching
+ * chat title. null when neither identifies a message (or the message was deleted).
  */
 export async function answeredMessage(db: Db, run: RunRow): Promise<{ id: string; text: string; payload: string; callId: string | null } | null> {
+  if (!run.channelId) return null;
+  const bound = await db.message.findFirst({
+    where: { userId: run.userId, channelId: run.channelId, taskId: run.taskId, role: "user", payload: { contains: `"answeringRunId":${JSON.stringify(run.id)}` } },
+    select: { id: true, text: true, payload: true, callId: true },
+  });
+  if (bound) return bound;
   const title = titleOf(run.title);
   if (title === null || !run.channelId) return null;
   const candidates = await db.message.findMany({

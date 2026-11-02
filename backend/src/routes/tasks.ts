@@ -161,11 +161,11 @@ export function registerTaskRoutes(tasks: TaskService): RegisterRoutes {
     app.post("/api/tasks/:id/messages", async (c) => {
       const task = await ownTask(c);
       const input = await readJson(c, SendMessageRequest);
-      const { events, heartbeatMs, connections } = c.get("deps");
+      const { events, heartbeatMs, connections, runs } = c.get("deps");
       const tap = tapTask(events, task.userId, task.id);
       try {
-        const { runId } = await tasks.reply(task, input);
-        return tap.respond(runId, { heartbeatMs, signal: c.req.raw.signal, session: { sessionId: c.get("session").id, connections } });
+        const { runId, message } = await tasks.reply(task, input);
+        return tap.respond(runId, { heartbeatMs, signal: c.req.raw.signal, session: { sessionId: c.get("session").id, connections }, follow: () => runs.runOf(message.id) });
       } catch (error) {
         tap.stop();
         throw error;

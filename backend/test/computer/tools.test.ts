@@ -7,6 +7,8 @@ import { PROBE_COMMAND } from "../../src/agent/environment.ts";
 import { RESUME_PROMPT } from "../../src/computer/service.ts";
 import { uploadForm, PNG } from "../helpers/files.ts";
 import { signUp } from "../helpers/session.ts";
+import { readSse } from "../helpers/sse.ts";
+import { deferred } from "../tasks/harness.ts";
 import { call, computerRig, messagesOf, sleep, statusesOf, text, type ComputerRig } from "./harness.ts";
 
 let rig: ComputerRig;
@@ -452,6 +454,27 @@ describe("attachments into /workspace (L179)", () => {
     expect(rig.llm.sent("chat")[0]!.system).toContain(path);
     expect((await audits(rig)).map((x) => [x.action, x.actor, x.target, x.outcome])).toContainEqual(["computer_files_write", "user", path, "ok"]);
     expect(await rig.fixture.db.channelFile.findUniqueOrThrow({ where: { id: fileId } })).toMatchObject({ origin: "upload", workspacePath: path, taskId: null });
+  });
+
+  test("a file sent while the turn runs (steering) is copied in too, and the next call is told where", async () => {
+    rig = await computerRig();
+    const reached = deferred();
+    const release = deferred();
+    rig.llm.script("chat", async () => { reached.resolve(); await release.promise; return [text("Working on it.")]; }, [text("Got the chart.")]);
+    const first = rig.send(rig.alex, "Make me a summary");
+    await reached.promise;
+    const fileId = await upload(rig);
+    const joined = await rig.api(rig.alex, `/api/channels/${rig.alex.mainChannelId}/messages`, { method: "POST", body: { text: "Use this chart", clientId: "steer-file", fileIds: [fileId] } });
+    expect(joined.status).toBe(200);
+    release.resolve();
+    await Promise.all([first, readSse(joined, { timeoutMs: 20_000 })]);
+    const path = `uploads/${fileId.slice(0, 8)}-chart.png`;
+    const [before, after] = rig.llm.sent("chat");
+    expect(before!.system).not.toContain("uploads/");
+    expect(after!.system).toContain(path);
+    expect(new Uint8Array(readFileSync(join(rig.fake.root, path)))).toEqual(PNG);
+    expect(await rig.fixture.db.channelFile.findUniqueOrThrow({ where: { id: fileId } })).toMatchObject({ workspacePath: path });
+    expect(await rig.fixture.db.run.count({ where: { kind: "chat" } })).toBe(1);
   });
 
   test("a computer that's down never blocks the send", async () => {

@@ -900,6 +900,17 @@ export function computerProvider(deps: ComputerProviderDeps): ComputerProvider {
     });
   }
 
+  /** Where the turn's attachments landed in /workspace (none told if the copy failed). */
+  async function attachmentLines(input: TurnInput): Promise<string[]> {
+    try {
+      const copiedFiles = await copyAttachments(input);
+      return copiedFiles.length ? [`The user's attachments are also in /workspace:\n${markUntrusted(JSON.stringify(copiedFiles), "attachment")}`] : [];
+    } catch (error) {
+      log.warn("attachment copy failed", { error: { name: (error as Error)?.name ?? "Error" } });
+      return [];
+    }
+  }
+
   async function instructions(input: TurnInput): Promise<string[]> {
     if (!(await service.allows(input.userId))) {
       if (service.configured) return ["OpenDuet's computer (browser, files, shell) isn't set up on this server for this account: it belongs to another account here, so there are no computer tools. If the user asks you to browse, run code or work with files there, say so honestly."];
@@ -907,12 +918,7 @@ export function computerProvider(deps: ComputerProviderDeps): ComputerProvider {
     }
     const lines = [GUIDE];
     if (kindOf(input) === "task" && input.taskId) lines.push(`Keep this task's working files in /workspace/tasks/${input.taskId}/; hand deliverables to the user with send_file.`);
-    try {
-      const copiedFiles = await copyAttachments(input);
-      if (copiedFiles.length) lines.push(`The user's attachments are also in /workspace:\n${markUntrusted(JSON.stringify(copiedFiles), "attachment")}`);
-    } catch (error) {
-      log.warn("attachment copy failed", { error: { name: (error as Error)?.name ?? "Error" } });
-    }
+    lines.push(...(await attachmentLines(input)));
     const state = service.state();
     lines.push(`OpenDuet's computer right now (data): ${JSON.stringify({ available: state.available, browser: state.browser, controller: state.controller, domain: state.domain, blocked: state.blocked })}`);
     if (state.controller === "user") lines.push("The user is driving OpenDuet's browser (Take over): don't use the browser tools until they hand it back.");
@@ -969,6 +975,10 @@ export function computerProvider(deps: ComputerProviderDeps): ComputerProvider {
     executeApproved,
     environment,
     instructions,
+    // A file sent while the turn runs (steering) lands in /workspace like the turn's own.
+    async steeringInstructions(input) {
+      return (await service.allows(input.userId)) ? attachmentLines(input) : [];
+    },
     async tools(input) {
       if (!(await service.allows(input.userId))) return [];
       const vision = deps.vision(input);

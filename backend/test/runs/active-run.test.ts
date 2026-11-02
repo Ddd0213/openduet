@@ -53,7 +53,7 @@ const pageOf = async (channelId: string) => MessagePage.parse(await (await fixtu
 const send = (channelId: string, body: string, clientId: string) => fixture.app.request(`/api/channels/${channelId}/messages`, json(alex, "POST", { text: body, clientId }));
 
 describe("activeRun", () => {
-  test("a running chat turn shows on the channel and the message page (a second one queued behind doesn't replace it); null once done", async () => {
+  test("a running chat turn stays active through steering, then becomes null once done", async () => {
     const channelId = await newChannel("Active chat");
     expect((await channelOf(channelId)).activeRun).toBeNull();
     const first = held("First answer");

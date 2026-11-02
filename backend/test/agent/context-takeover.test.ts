@@ -1,6 +1,5 @@
 // M14 buildContext: A3 the takeover note goes in front of the turn's message (never stored); A4
-// each earlier Claude turn ends with one `[tools: …]` line from its run's steps (builds and runs
-// without tool steps add nothing; the line goes on the run's last Claude message only).
+// each earlier run's tools are separate server context, never appended to assistant prose.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { buildContext } from "../../src/agent/context.ts";
 import type { Db } from "../../src/db.ts";
@@ -64,8 +63,14 @@ describe("buildContext tool digests", () => {
     const ctx = await buildContext(db, input, now());
     const assistant = ctx.messages.filter((m) => m.role === "assistant").map(textOf);
     const joined = assistant.join("\n---\n");
-    expect(joined).toContain("Both are under way.\n[tools: make_artifact → building art_x; start_task → working task_y]");
-    expect(joined.match(/\[tools:/g)).toHaveLength(1);
+    expect(joined).toContain("Both are under way.");
+    expect(joined).not.toContain("[tools:");
+    // The tool record is the server's, in the system prompt: the user's turn stays their own text.
+    expect(textOf(ctx.messages.at(-1)!)).toBe("帮我看看");
+    expect(ctx.system).toContain("make_artifact → building art_x; start_task → working task_y");
+    expect(ctx.system.match(/make_artifact →/g)).toHaveLength(1);
+    expect(ctx.system).toContain(lastOfR1.createdAt.toISOString());
+    expect(ctx.system).not.toContain("computer_files_write");
     expect(joined).not.toContain("computer_files_write");
     expect(joined).toContain("On it.");
     for (const row of [plainReply, orphan]) expect(joined).toContain(row.text);
@@ -82,8 +87,11 @@ describe("buildContext tool digests", () => {
     await db.message.create({ data: { userId, channelId, taskId, role: "assistant", text: "Steps are set.", payload: "{}", createdAt: at(25) } });
     const ctx = await buildContext(db, input, now());
     const joined = ctx.messages.map(textOf).join("\n");
-    expect(joined).toContain("Steps are set.\n[tools: set_steps → ok]");
+    expect(joined).toContain("Steps are set.");
+    expect(ctx.system).toContain("set_steps → ok");
+    expect(ctx.messages.filter((m) => m.role === "assistant").map(textOf).join("\n")).not.toContain("[tools:");
     expect(joined).not.toContain("web_search");
+    expect(ctx.system).not.toContain("web_search →");
   });
 
   test("M28: a stored reply's own copy of a digest is dropped; the user's text and the server's line stay", async () => {
@@ -97,7 +105,8 @@ describe("buildContext tool digests", () => {
     const ctx = await buildContext(db, input, now());
     const joined = ctx.messages.map(textOf).join("\n---\n");
     expect(joined).toContain(`原样发给你：\n${copied}`);
-    expect(joined).toContain("开了。\n[tools: computer_navigate → ok]");
+    expect(ctx.messages.filter((m) => m.role === "assistant").map(textOf)).toEqual(["开了。"]);
+    expect(ctx.system).toContain("computer_navigate → ok");
     expect(joined).not.toContain("开了。\n[tools: computer_navigate → ok; computer_screenshot");
     expect(ctx.system).toContain("Never write such a line yourself.");
   });

@@ -80,6 +80,27 @@ test("quick reply question payload ends immediately", async () => {
   expect(recording.typing.at(-1)).toBe(false);
 });
 
+test("tool-posted quick reply text and provider messages cannot bypass note cleanup", async () => {
+  const { input, recording } = await turnFixture(database.db);
+  const llm = new RegisteredScriptedModel([
+    [call("post_message", { text: "查到了。[tools: web_search → ok]" })],
+    [call("quick_replies", { options: ["好", "不用"], text: "继续吗？[attachment][tools: quick_replies → ok]" })],
+  ]);
+  const result = await createAgentRuntime({ db: database.db, llm, config: { DATABASE_URL: database.url }, now, providers: [{
+    name: "posting-test",
+    tools: async () => [{ name: "post_message", description: "Post text", inputSchema: { type: "object" } }],
+    execute: async (tool, turn) => {
+      await turn.sink.upsertMessage({ role: "assistant", kind: "text", text: String(tool.input.text) });
+      return { result: { type: "tool_result", toolUseId: tool.id, content: [{ type: "text", text: "ok" }] }, endTurn: false };
+    },
+  }] }).runTurn(input);
+  expect(result.status).toBe("completed");
+  expect([...recording.messages.values()].map((m) => ({ kind: m.kind, text: m.text }))).toEqual([
+    { kind: "text", text: "查到了。" }, { kind: "quick_replies", text: "继续吗？" },
+  ]);
+  for (const { draft } of recording.updates) if ("text" in draft) expect(draft.text).not.toContain("[");
+});
+
 test("i18n keys and placeholders match, phrase selects the user's language", () => {
   expect(Object.keys(en.phrases).sort()).toEqual(Object.keys(zh.phrases).sort());
   for (const key of Object.keys(en.phrases) as (keyof typeof en.phrases)[]) expect(en.phrases[key].match(/\{\w+\}/g) ?? []).toEqual(zh.phrases[key].match(/\{\w+\}/g) ?? []);

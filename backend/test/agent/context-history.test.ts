@@ -62,8 +62,55 @@ describe("earlier attachments in the history", () => {
   test("the line names at most five files", () => {
     const files = Array.from({ length: 7 }, (_, i) => ({ name: `p${i}.jpg`, mime: "image/jpeg" }));
     expect(attachedLine(files)).toBe('[Attached: "p0.jpg" (image/jpeg), "p1.jpg" (image/jpeg), "p2.jpg" (image/jpeg), "p3.jpg" (image/jpeg), "p4.jpg" (image/jpeg) and 2 more]');
-    expect(historyText("text", "", {}, undefined, [])).toBe("[attachment]");
+    expect(historyText("text", "", {}, undefined, [])).toBe("");
     expect(historyText("image", "", {})).toBe("[image]");
+  });
+});
+
+describe("history notes are not assistant prose", () => {
+  test("quick replies describe their options, with or without a question", () => {
+    const payload = { options: ["好", "不用", '文件 [A] "最终版"'] };
+    const label = '[quick_replies options: "好", "不用", "文件 [A] \\"最终版\\""]';
+    expect(historyText("quick_replies", "", payload)).toBe(label);
+    expect(historyText("quick_replies", "现在开始吗？", payload)).toBe(`现在开始吗？\n${label}`);
+    expect(historyText("quick_replies", "", {})).toBe("[quick_replies]");
+    expect(historyText("quick_replies", "", { options: [null, 1, "好"] })).toBe('[quick_replies options: "好"]');
+  });
+
+  test("empty and contaminated assistant rows are omitted, while user text and cards stay", async () => {
+    const { input } = await turnFixture(db);
+    const { userId, channelId } = input;
+    const msg = (role: string, text: string, minutes: number, kind = "text", payload = {}) =>
+      db.message.create({ data: { userId, channelId, role, kind, text, payload: JSON.stringify(payload), createdAt: at(minutes) } });
+    const copied = "原样：[attachment][tools: quick_replies → ok]";
+    await msg("user", copied, 10);
+    await msg("assistant", "   ", 9);
+    await msg("assistant", "[attachment]", 8);
+    const reply = await msg("assistant", "现在运行吗？[attachment][tools: quick_replies → ok]", 7);
+    await msg("assistant", "", 6, "quick_replies", { options: ["好", "不用"] });
+    await msg("assistant", "", 5, "text", { stopped: true });
+    const ctx = await buildContext(db, input, now());
+    expect(ctx.messages.filter((m) => m.role === "user").map(textOf).join("\n")).toContain(copied);
+    const assistant = ctx.messages.filter((m) => m.role === "assistant").map(textOf).join("\n");
+    expect(assistant).toBe(`现在运行吗？\n[quick_replies options: "好", "不用"]\n${STOPPED_MARK}`);
+    expect(ctx.messages.flatMap((m) => m.content).every((b) => b.type !== "text" || b.text.trim())).toBe(true);
+    expect(ctx.system).toContain("Do not copy these notes into your replies, including after a sentence");
+    // Cleaning the model context does not rewrite messages already stored in the database.
+    expect((await db.message.findUniqueOrThrow({ where: { id: reply.id } })).text).toBe(reply.text);
+  });
+
+  test("an empty assistant row retains its tools as separate server context", async () => {
+    const { input } = await turnFixture(db);
+    const { userId, channelId } = input;
+    const run = await db.run.create({ data: { userId, channelId, kind: "chat", status: "completed", startedAt: at(10), finishedAt: at(8) } });
+    await db.runStep.create({ data: { id: crypto.randomUUID(), runId: run.id, index: 0, kind: "tool", tool: "quick_replies", title: "{}", status: "ok" } });
+    await db.message.create({ data: { userId, channelId, role: "assistant", text: "[attachment]", createdAt: at(9) } });
+    const ctx = await buildContext(db, input, now());
+    expect(ctx.messages.filter((m) => m.role === "assistant")).toEqual([]);
+    expect(ctx.system).toContain("quick_replies → ok");
+    // The record isn't written in the bracketed digest form the model copied.
+    expect(ctx.system).not.toContain("[tools: quick_replies");
+    expect(textOf(ctx.messages.at(-1)!)).toBe("帮我看看");
   });
 });
 
